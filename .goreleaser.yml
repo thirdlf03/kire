@@ -21,12 +21,12 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 archives:
-  - formats: [ 'tar.gz' ]
+  - formats: ['tar.gz']
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     format_overrides:
       - goos: windows
-        formats: [ 'zip' ]
+        formats: ['zip']
 
 checksum:
   name_template: checksums.txt
