@@ -25,6 +25,14 @@ Wrote spec/index.md
 
 ## インストール
 
+Homebrew (macOS / Linux):
+
+```bash
+brew install thirdlf03/tap/kire
+```
+
+Go:
+
 ```bash
 go install github.com/thirdlf03/kire/cmd/kire@latest
 ```
@@ -35,6 +43,19 @@ go install github.com/thirdlf03/kire/cmd/kire@latest
 git clone https://github.com/thirdlf03/kire.git
 cd kire
 just build
+```
+
+シェル補完を有効にするには、以下をシェルの設定ファイルに追加する:
+
+```bash
+# Bash (~/.bashrc)
+source <(kire completion bash)
+
+# Zsh (~/.zshrc)
+source <(kire completion zsh)
+
+# Fish (~/.config/fish/config.fish)
+kire completion fish | source
 ```
 
 ## 例

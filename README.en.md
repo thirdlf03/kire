@@ -25,6 +25,14 @@ Wrote spec/index.md
 
 ## Installation
 
+Homebrew (macOS / Linux):
+
+```bash
+brew install thirdlf03/tap/kire
+```
+
+Go:
+
 ```bash
 go install github.com/thirdlf03/kire/cmd/kire@latest
 ```
@@ -35,6 +43,19 @@ From source:
 git clone https://github.com/thirdlf03/kire.git
 cd kire
 just build
+```
+
+To enable shell completion, add the following to your shell config:
+
+```bash
+# Bash (~/.bashrc)
+source <(kire completion bash)
+
+# Zsh (~/.zshrc)
+source <(kire completion zsh)
+
+# Fish (~/.config/fish/config.fish)
+kire completion fish | source
 ```
 
 ## Example
