@@ -45,6 +45,23 @@ homebrew_casks:
       owner: thirdlf03
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/kire"]
+          end
+    caveats: |
+      Shell completion を有効にするには:
+
+        # Bash
+        source <(kire completion bash)
+
+        # Zsh (add to .zshrc)
+        source <(kire completion zsh)
+
+        # Fish
+        kire completion fish | source
     homepage: https://github.com/thirdlf03/kire
     description: "kire - Split long Markdown files at semantic boundaries"
     license: MIT
