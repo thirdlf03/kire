@@ -1,0 +1,11 @@
+{
+  "doc_id": "nested_headings",
+  "unit": "block",
+  "boundaries": [0, 3, 5],
+  "notes": {
+    "description": "12 blocks: H1, H2, H3, Para, H3, Para, H2, H3, H4, Para, H3, Para",
+    "boundary_0": "gap after H1 (Top Level) before Section A begins",
+    "boundary_3": "gap between Subsection A1 content and Subsection A2",
+    "boundary_5": "gap between Section A content and Section B"
+  }
+}

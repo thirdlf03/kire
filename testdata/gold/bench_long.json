@@ -1,0 +1,29 @@
+{
+  "doc_id": "bench_long",
+  "unit": "block",
+  "boundaries": [1, 4, 10, 14, 16, 21, 23],
+  "params": {
+    "eval_stage": "raw",
+    "tolerance": 0,
+    "k": 3,
+    "min_gap": 1,
+    "pseudo_heading": false,
+    "boundary_hints": false,
+    "section_lock": false,
+    "suppress_list_boundary": false,
+    "atomic_boundary": false,
+    "baseline_min_gap": false
+  },
+  "notes": {
+    "description": "25 blocks: recommendation engine RFC with heavy vocabulary overlap across topics (collaborative filtering, content-based, hybrid, online learning, evaluation, A/B testing, monitoring). All topics share terms like model, features, training, accuracy, users, items.",
+    "heading_split_would_be": "gaps 1,6,12,18 (before each ## heading)",
+    "overlap_with_heading": "Only gap 1 is shared. 6 of 7 gold boundaries are mid-section topic transitions.",
+    "boundary_1": "after intro, before Current System section",
+    "boundary_4": "WITHIN Current System: collab filtering performance discussion ends, cold start problem begins. Both discuss the same model's metrics but shift from strengths to failures.",
+    "boundary_10": "WITHIN Proposed Architecture: content-based model details end, hybrid scoring layer begins. Both use similar vocabulary (model, score, features) but are architecturally distinct topics.",
+    "boundary_14": "AT Training Pipeline heading: architecture discussion ends, training begins. Aligns with heading but for the right reason.",
+    "boundary_16": "WITHIN Training Pipeline: collab filtering training + data quality ends, content-based training begins. Very similar vocabulary (training, model, data, pipeline) but different model.",
+    "boundary_21": "WITHIN Evaluation Plan: offline evaluation expectations end, A/B test experiment design begins. Both use metrics/accuracy vocabulary but offline eval vs online experiment are different topics.",
+    "boundary_23": "WITHIN Evaluation Plan: A/B test statistical design ends, production monitoring begins. Both discuss metrics and thresholds but experiment design vs operational monitoring are distinct."
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "doc_id": "simple",
+  "unit": "block",
+  "boundaries": [1, 4],
+  "notes": {
+    "description": "9 blocks: H1, Para, H2, Para, List, H3, Para, Code, Para",
+    "boundary_1": "gap between H1+Para introduction and H2 section",
+    "boundary_4": "gap between H2 content (Para+List) and H3 section"
+  }
+}

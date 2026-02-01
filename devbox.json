@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
+  "packages": [
+    "go@1.25",
+    "golangci-lint@latest",
+    "just@latest"
+  ],
+  "shell": {
+    "scripts": {
+      "test": "go test ./...",
+      "lint": "GOFLAGS=-buildvcs=false golangci-lint run ./...",
+      "fmt": "gofmt -w .",
+      "fmt-check": "test -z \"$(gofmt -l .)\" || (gofmt -l . && exit 1)"
+    }
+  }
+}

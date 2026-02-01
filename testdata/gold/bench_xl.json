@@ -1,0 +1,18 @@
+{
+  "doc_id": "bench_xl",
+  "unit": "block",
+  "boundaries": [4, 10, 15, 21, 26, 32, 37, 43, 48, 54, 59, 65, 70, 76, 81, 87, 92, 98],
+  "params": {
+    "eval_stage": "final",
+    "tolerance": 0,
+    "min_tokens": 200,
+    "max_tokens": 500,
+    "max_lines": 0
+  },
+  "notes": {
+    "description": "104 blocks. Nine sections with ten paragraphs each. Boundaries are after paragraph 5 and paragraph 10 of each section, plus one boundary after the introduction. This creates mid-section transitions while keeping headings as segment anchors.",
+    "heading_split_would_be": "gaps after each section's last paragraph (end of section)",
+    "design_intent": "Paragraphs reuse shared vocabulary (pipeline, latency, throughput, backpressure) so boundaries rely on topic shifts rather than keyword changes.",
+    "raw_comparison": "embedder 比較（raw）時は --profile embedder --split-count 19 を推奨。split-count を gold params に入れると final 評価で section lock との干渉が起きるため手動指定とする。"
+  }
+}
