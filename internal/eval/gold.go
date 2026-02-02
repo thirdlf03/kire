@@ -27,6 +27,7 @@ type GoldParams struct {
 	MaxTokens            *int     `json:"max_tokens,omitempty"`
 	MaxLines             *int     `json:"max_lines,omitempty"`
 	Window               *int     `json:"window,omitempty"`
+	BlockK               *int     `json:"block_k,omitempty"`
 	Threshold            *float64 `json:"threshold,omitempty"`
 	SplitCount           *int     `json:"split_count,omitempty"`
 	PackHeadingBarrier   *int     `json:"pack_heading_barrier,omitempty"`

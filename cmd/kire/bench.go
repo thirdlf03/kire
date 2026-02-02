@@ -58,6 +58,7 @@ var (
 	flBenchMaxTokens          *int
 	flBenchMaxLines           *int
 	flBenchWindow             *int
+	flBenchBlockK             *int
 	flBenchThreshold          *float64
 	flBenchMinGap             *int
 	flBenchSplitCount         *int
@@ -93,6 +94,7 @@ func init() {
 	flBenchMaxTokens = f.Int("max-tokens", 3000, "Maximum tokens per segment (0 = unlimited; auto-disabled when --max-lines is active)")
 	flBenchMaxLines = f.Int("max-lines", -1, "Maximum lines per segment (-1 = auto, 0 = unlimited)")
 	flBenchWindow = f.Int("window", 3, "Similarity smoothing window size")
+	flBenchBlockK = f.Int("block-k", 3, "Block comparison window (k embeddings per side, 1=adjacent)")
 	flBenchThreshold = f.Float64("threshold", -1, "Boundary depth score threshold (-1 = auto)")
 	flBenchMinGap = f.Int("min-gap", 3, "Minimum gap between boundaries")
 	flBenchSplitCount = f.Int("split-count", 0, "Target number of segments (0 = auto)")
@@ -205,6 +207,7 @@ func runBench(cmd *cobra.Command, args []string) error {
 		MaxTokens:                effectiveMaxTokens,
 		MaxLines:                 *flBenchMaxLines,
 		Window:                   *flBenchWindow,
+		BlockK:                   *flBenchBlockK,
 		Threshold:                thresholdPtr,
 		MinGap:                   *flBenchMinGap,
 		EmbedTaskType:            "SEMANTIC_SIMILARITY",
@@ -314,7 +317,7 @@ func runBench(cmd *cobra.Command, args []string) error {
 		if stage.final {
 			depthScores := result.Boundary.DepthScores
 			if len(depthScores) != numBlocks-1 {
-				depthScores = computeDepthScores(result.Embeddings, *flBenchWindow)
+				depthScores = computeDepthScores(result.Embeddings, *flBenchWindow, *flBenchBlockK)
 			}
 
 			effectiveMaxLines := *flBenchMaxLines
@@ -457,6 +460,9 @@ func applyEmbedderProfile(cmd *cobra.Command) error {
 	if err := setIfNotChanged(cmd, "baseline-min-gap", "false"); err != nil {
 		return err
 	}
+	if err := setIfNotChanged(cmd, "block-k", "3"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -511,6 +517,11 @@ func applyGoldParams(cmd *cobra.Command, params *eval.GoldParams) error {
 	}
 	if params.Window != nil {
 		if err := setIfNotChanged(cmd, "window", fmt.Sprintf("%d", *params.Window)); err != nil {
+			return err
+		}
+	}
+	if params.BlockK != nil {
+		if err := setIfNotChanged(cmd, "block-k", fmt.Sprintf("%d", *params.BlockK)); err != nil {
 			return err
 		}
 	}
@@ -737,14 +748,11 @@ func warnSmallDoc(cmd *cobra.Command, numBlocks int) {
 	}
 }
 
-func computeDepthScores(embeddings []model.Embedding, window int) []float64 {
+func computeDepthScores(embeddings []model.Embedding, window, blockK int) []float64 {
 	if len(embeddings) < 2 {
 		return nil
 	}
-	sims := make([]float64, len(embeddings)-1)
-	for i := 0; i < len(embeddings)-1; i++ {
-		sims[i] = boundary.CosineSimilarity(embeddings[i].Vector, embeddings[i+1].Vector)
-	}
+	sims := boundary.BlockSimilarities(embeddings, blockK)
 	smoothed := boundary.Smooth(sims, window)
 	return boundary.DepthScore(smoothed)
 }

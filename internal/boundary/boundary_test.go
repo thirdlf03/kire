@@ -380,6 +380,189 @@ func TestCosineSimilarity_InfInput(t *testing.T) {
 	}
 }
 
+func TestMeanPool(t *testing.T) {
+	tests := []struct {
+		name   string
+		vecs   [][]float64
+		expect []float64
+	}{
+		{"empty", nil, nil},
+		{"single", [][]float64{{1, 2, 3}}, []float64{1, 2, 3}},
+		{"two vectors", [][]float64{{1, 0, 0}, {0, 1, 0}}, []float64{0.5, 0.5, 0}},
+		{"three vectors", [][]float64{{3, 0, 0}, {0, 6, 0}, {0, 0, 9}}, []float64{1, 2, 3}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := boundary.MeanPool(tt.vecs)
+			if tt.expect == nil {
+				if got != nil {
+					t.Errorf("expected nil, got %v", got)
+				}
+				return
+			}
+			if len(got) != len(tt.expect) {
+				t.Fatalf("expected len %d, got %d", len(tt.expect), len(got))
+			}
+			for i := range got {
+				if math.Abs(got[i]-tt.expect[i]) > 1e-9 {
+					t.Errorf("[%d] expected %f, got %f", i, tt.expect[i], got[i])
+				}
+			}
+		})
+	}
+}
+
+func TestMeanPool_SingleReturnsClone(t *testing.T) {
+	v := []float64{1, 2, 3}
+	got := boundary.MeanPool([][]float64{v})
+	// Modify original — result should not change
+	v[0] = 99
+	if got[0] != 1 {
+		t.Error("MeanPool single should return a clone")
+	}
+}
+
+func TestBlockSimilarities_K1_MatchesAdjacent(t *testing.T) {
+	embeddings := []model.Embedding{
+		{BlockIndex: 0, Vector: []float64{1, 0, 0}},
+		{BlockIndex: 1, Vector: []float64{0.9, 0.1, 0}},
+		{BlockIndex: 2, Vector: []float64{0, 1, 0}},
+		{BlockIndex: 3, Vector: []float64{0, 0.9, 0.1}},
+	}
+	got := boundary.BlockSimilarities(embeddings, 1)
+	// k=1 should produce same result as adjacent comparison
+	if len(got) != 3 {
+		t.Fatalf("expected 3 sims, got %d", len(got))
+	}
+	for i := 0; i < 3; i++ {
+		adj := boundary.CosineSimilarity(embeddings[i].Vector, embeddings[i+1].Vector)
+		if math.Abs(got[i]-adj) > 1e-9 {
+			t.Errorf("gap %d: expected %f, got %f", i, adj, got[i])
+		}
+	}
+}
+
+func TestBlockSimilarities_K0_MatchesAdjacent(t *testing.T) {
+	embeddings := []model.Embedding{
+		{BlockIndex: 0, Vector: []float64{1, 0, 0}},
+		{BlockIndex: 1, Vector: []float64{0, 1, 0}},
+		{BlockIndex: 2, Vector: []float64{0, 0, 1}},
+	}
+	got := boundary.BlockSimilarities(embeddings, 0)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 sims, got %d", len(got))
+	}
+	for i := 0; i < 2; i++ {
+		adj := boundary.CosineSimilarity(embeddings[i].Vector, embeddings[i+1].Vector)
+		if math.Abs(got[i]-adj) > 1e-9 {
+			t.Errorf("gap %d: expected %f, got %f", i, adj, got[i])
+		}
+	}
+}
+
+func TestBlockSimilarities_K3_Basic(t *testing.T) {
+	// 2 topics × 3 blocks each; gap 2 (between topics) should have lowest similarity
+	topicA := []float64{1, 0, 0}
+	topicB := []float64{0, 1, 0}
+	embeddings := []model.Embedding{
+		{BlockIndex: 0, Vector: topicA},
+		{BlockIndex: 1, Vector: topicA},
+		{BlockIndex: 2, Vector: topicA},
+		{BlockIndex: 3, Vector: topicB},
+		{BlockIndex: 4, Vector: topicB},
+		{BlockIndex: 5, Vector: topicB},
+	}
+	sims := boundary.BlockSimilarities(embeddings, 3)
+	if len(sims) != 5 {
+		t.Fatalf("expected 5 sims, got %d", len(sims))
+	}
+	// Gap 2 (between block 2 and 3) should be lowest
+	minIdx := 0
+	for i, s := range sims {
+		if s < sims[minIdx] {
+			minIdx = i
+		}
+	}
+	if minIdx != 2 {
+		t.Errorf("expected lowest sim at gap 2, got gap %d (sims: %v)", minIdx, sims)
+	}
+}
+
+func TestBlockSimilarities_EdgeCases(t *testing.T) {
+	// Should not panic for various edge cases
+	t.Run("k > n/2", func(t *testing.T) {
+		embeddings := []model.Embedding{
+			{BlockIndex: 0, Vector: []float64{1, 0}},
+			{BlockIndex: 1, Vector: []float64{0, 1}},
+			{BlockIndex: 2, Vector: []float64{1, 0}},
+		}
+		sims := boundary.BlockSimilarities(embeddings, 10)
+		if len(sims) != 2 {
+			t.Errorf("expected 2 sims, got %d", len(sims))
+		}
+	})
+	t.Run("n=2", func(t *testing.T) {
+		embeddings := []model.Embedding{
+			{BlockIndex: 0, Vector: []float64{1, 0}},
+			{BlockIndex: 1, Vector: []float64{0, 1}},
+		}
+		sims := boundary.BlockSimilarities(embeddings, 3)
+		if len(sims) != 1 {
+			t.Errorf("expected 1 sim, got %d", len(sims))
+		}
+	})
+	t.Run("n=1", func(t *testing.T) {
+		embeddings := []model.Embedding{
+			{BlockIndex: 0, Vector: []float64{1, 0}},
+		}
+		sims := boundary.BlockSimilarities(embeddings, 3)
+		if len(sims) != 0 {
+			t.Errorf("expected 0 sims, got %d", len(sims))
+		}
+	})
+	t.Run("empty", func(t *testing.T) {
+		sims := boundary.BlockSimilarities(nil, 3)
+		if len(sims) != 0 {
+			t.Errorf("expected 0 sims, got %d", len(sims))
+		}
+	})
+}
+
+func TestDetectBoundaries_BlockK_BackwardCompat(t *testing.T) {
+	// BlockK=0 should produce same results as default (no BlockK)
+	embeddings := []model.Embedding{
+		{BlockIndex: 0, Vector: []float64{1, 0, 0}},
+		{BlockIndex: 1, Vector: []float64{1, 0, 0}},
+		{BlockIndex: 2, Vector: []float64{0, 1, 0}},
+		{BlockIndex: 3, Vector: []float64{0, 1, 0}},
+	}
+	configOld := boundary.ScoringConfig{
+		Window: 0,
+		MinGap: 1,
+	}
+	configNew := boundary.ScoringConfig{
+		Window: 0,
+		MinGap: 1,
+		BlockK: 0,
+	}
+	resultOld := boundary.DetectBoundaries(embeddings, configOld)
+	resultNew := boundary.DetectBoundaries(embeddings, configNew)
+
+	if len(resultOld.Boundaries) != len(resultNew.Boundaries) {
+		t.Fatalf("boundary count mismatch: old=%v new=%v", resultOld.Boundaries, resultNew.Boundaries)
+	}
+	for i := range resultOld.Boundaries {
+		if resultOld.Boundaries[i] != resultNew.Boundaries[i] {
+			t.Errorf("boundary %d: old=%d new=%d", i, resultOld.Boundaries[i], resultNew.Boundaries[i])
+		}
+	}
+	for i := range resultOld.Similarities {
+		if math.Abs(resultOld.Similarities[i]-resultNew.Similarities[i]) > 1e-9 {
+			t.Errorf("sim %d: old=%f new=%f", i, resultOld.Similarities[i], resultNew.Similarities[i])
+		}
+	}
+}
+
 func TestDetectBoundaries_NilHints(t *testing.T) {
 	// Nil hints should not change behavior
 	embeddings := []model.Embedding{

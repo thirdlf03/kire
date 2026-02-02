@@ -236,6 +236,7 @@ func newTestBenchCmd() *cobra.Command {
 	f.Int("max-tokens", 3000, "")
 	f.Int("max-lines", -1, "")
 	f.Int("window", 3, "")
+	f.Int("block-k", 3, "")
 	f.Float64("threshold", -1, "")
 	f.Int("split-count", 0, "")
 	f.Int("pack-heading-barrier", 0, "")
@@ -695,11 +696,11 @@ func TestWarnAutoK(t *testing.T) {
 
 func TestComputeDepthScores(t *testing.T) {
 	t.Run("returns nil for < 2 embeddings", func(t *testing.T) {
-		got := computeDepthScores(nil, 3)
+		got := computeDepthScores(nil, 3, 0)
 		if got != nil {
 			t.Fatalf("expected nil, got %v", got)
 		}
-		got = computeDepthScores([]model.Embedding{{Vector: []float64{1, 0}}}, 3)
+		got = computeDepthScores([]model.Embedding{{Vector: []float64{1, 0}}}, 3, 0)
 		if got != nil {
 			t.Fatalf("expected nil for single embedding, got %v", got)
 		}
@@ -713,7 +714,7 @@ func TestComputeDepthScores(t *testing.T) {
 			{Vector: []float64{0, 0.1, 0.9}},
 			{Vector: []float64{0, 0.1, 0.9}},
 		}
-		got := computeDepthScores(embeddings, 1)
+		got := computeDepthScores(embeddings, 1, 0)
 		if len(got) != 4 {
 			t.Fatalf("expected 4 depth scores, got %d", len(got))
 		}

@@ -36,6 +36,7 @@ type SegmentConfig struct {
 	MaxTokens          int
 	MaxLines           int
 	Window             int
+	BlockK             int
 	Threshold          float64
 	ThresholdChanged   bool // true if user explicitly set --threshold >= 0
 	MinGap             int
@@ -116,6 +117,7 @@ func populateConfig(cmd *cobra.Command) CLIConfig {
 			MaxTokens:          *flMaxTokens,
 			MaxLines:           *flMaxLines,
 			Window:             *flWindow,
+			BlockK:             *flBlockK,
 			Threshold:          *flThreshold,
 			ThresholdChanged:   *flThreshold >= 0,
 			MinGap:             *flMinGap,

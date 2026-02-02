@@ -73,3 +73,13 @@ func BenchmarkDetectBoundaries_500blocks(b *testing.B) {
 		DetectBoundaries(embeddings, config)
 	}
 }
+
+func BenchmarkDetectBoundaries_100blocks_BlockK3(b *testing.B) {
+	embeddings := makeBenchEmbeddings(100, 256)
+	config := ScoringConfig{Window: 3, MinGap: 3, BlockK: 3}
+
+	b.ResetTimer()
+	for b.Loop() {
+		DetectBoundaries(embeddings, config)
+	}
+}

@@ -36,6 +36,7 @@ type ScoringConfig struct {
 	MinGap      int            // Minimum gap between boundaries
 	Hints       []BoundaryHint // Optional boundary hints (nil = no hints)
 	TargetCount *int           // Desired number of segments; nil = auto (threshold-based)
+	BlockK      int            // Block comparison window: k embeddings per side (0 or 1 = adjacent)
 }
 
 // BoundaryResult holds the detected boundaries and scoring details.
@@ -54,11 +55,8 @@ func DetectBoundaries(embeddings []model.Embedding, config ScoringConfig) Bounda
 		return BoundaryResult{}
 	}
 
-	// Step 1: Compute cosine similarities between adjacent blocks
-	sims := make([]float64, n-1)
-	for i := 0; i < n-1; i++ {
-		sims[i] = CosineSimilarity(embeddings[i].Vector, embeddings[i+1].Vector)
-	}
+	// Step 1: Compute cosine similarities (block window or adjacent)
+	sims := BlockSimilarities(embeddings, config.BlockK)
 
 	// Step 2: Smooth similarities
 	smoothed := Smooth(sims, config.Window)
@@ -165,7 +163,75 @@ func DetectBoundaries(embeddings []model.Embedding, config ScoringConfig) Bounda
 	}
 }
 
-// CosineSimilarity computes the cosine similarity between two vectors.
+// MeanPool returns the element-wise mean of the given vectors.
+// Returns nil for empty input. Returns a clone for single input.
+func MeanPool(vectors [][]float64) []float64 {
+	if len(vectors) == 0 {
+		return nil
+	}
+	dims := len(vectors[0])
+	result := make([]float64, dims)
+	if len(vectors) == 1 {
+		copy(result, vectors[0])
+		return result
+	}
+	for _, v := range vectors {
+		for j, val := range v {
+			result[j] += val
+		}
+	}
+	inv := 1.0 / float64(len(vectors))
+	for j := range result {
+		result[j] *= inv
+	}
+	return result
+}
+
+// BlockSimilarities computes cosine similarity between left and right block
+// windows of size k for each gap. When k <= 1, falls back to adjacent
+// comparison (equivalent to the original TextTiling implementation).
+func BlockSimilarities(embeddings []model.Embedding, k int) []float64 {
+	n := len(embeddings)
+	if n < 2 {
+		return nil
+	}
+
+	sims := make([]float64, n-1)
+
+	if k <= 1 {
+		// Adjacent comparison (original behavior)
+		for i := 0; i < n-1; i++ {
+			sims[i] = CosineSimilarity(embeddings[i].Vector, embeddings[i+1].Vector)
+		}
+		return sims
+	}
+
+	for i := 0; i < n-1; i++ {
+		// Left window: embeddings[max(0, i-k+1) .. i]
+		lo := i - k + 1
+		if lo < 0 {
+			lo = 0
+		}
+		leftVecs := make([][]float64, 0, i-lo+1)
+		for j := lo; j <= i; j++ {
+			leftVecs = append(leftVecs, embeddings[j].Vector)
+		}
+
+		// Right window: embeddings[i+1 .. min(n-1, i+k)]
+		hi := i + k
+		if hi > n-1 {
+			hi = n - 1
+		}
+		rightVecs := make([][]float64, 0, hi-i)
+		for j := i + 1; j <= hi; j++ {
+			rightVecs = append(rightVecs, embeddings[j].Vector)
+		}
+
+		sims[i] = CosineSimilarity(MeanPool(leftVecs), MeanPool(rightVecs))
+	}
+	return sims
+}
+
 // CosineSimilarity computes the cosine similarity between two vectors.
 // Delegates to vecmath.CosineSimilarity.
 func CosineSimilarity(a, b []float64) float64 {

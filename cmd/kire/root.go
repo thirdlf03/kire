@@ -88,6 +88,7 @@ var (
 	flPackHeadingBarrier   *int
 	flAgentMetadata        *bool
 	flStateFile            *string
+	flBlockK               *int
 )
 
 func init() {
@@ -116,6 +117,7 @@ func init() {
 	flMaxLines = f.Int("max-lines", -1, "Maximum lines per segment (-1 = auto, 0 = unlimited)")
 	flPackHeadingBarrier = f.Int("pack-heading-barrier", 0, "Heading level barrier for segment packing (0=disabled)")
 	flWindow = f.Int("window", 3, "Similarity smoothing window size")
+	flBlockK = f.Int("block-k", 3, "Block comparison window (k embeddings per side, 1=adjacent)")
 	flThreshold = f.Float64("threshold", -1, "Boundary depth score threshold (-1 = auto)")
 	flOverlapLines = f.Int("overlap", 0, "Overlap lines between segments")
 	flContextFormat = f.String("context-format", "comment", "Context format: comment|front-matter|heading|none")
