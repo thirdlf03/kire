@@ -73,6 +73,8 @@ var (
 	flBenchForceBoundary        *string
 	flBenchSuppressListBoundary *bool
 	flBenchAtomicBoundary       *bool
+	flBenchBoundaryMethod       *string
+	flBenchBeta                 *float64
 )
 
 func init() {
@@ -99,6 +101,8 @@ func init() {
 	flBenchMinGap = f.Int("min-gap", 3, "Minimum gap between boundaries")
 	flBenchSplitCount = f.Int("split-count", 0, "Target number of segments (0 = auto)")
 	flBenchPackHeadingBarrier = f.Int("pack-heading-barrier", 0, "Heading level barrier for segment packing (0=disabled)")
+	flBenchBoundaryMethod = f.String("boundary-method", "texttiling", "Boundary detection method: texttiling|kcpd")
+	flBenchBeta = f.Float64("beta", -1, "KCPD penalty parameter (-1 = auto)")
 
 	// Pseudo-heading
 	flBenchPseudoHeading = negatable(benchCmd, "pseudo-heading", true, "Enable pseudo-heading detection")
@@ -198,6 +202,13 @@ func runBench(cmd *cobra.Command, args []string) error {
 		effectiveMaxTokens = 0
 	}
 
+	// Beta pointer for KCPD
+	var benchBetaPtr *float64
+	if *flBenchBeta >= 0 {
+		b := *flBenchBeta
+		benchBetaPtr = &b
+	}
+
 	pipeCfg := pipeline.Config{
 		Source:                   source,
 		SourceName:               filepath.Base(inputPath),
@@ -220,6 +231,8 @@ func runBench(cmd *cobra.Command, args []string) error {
 		AtomicBoundaryProtection: *flBenchAtomicBoundary,
 		SplitCount:               splitCountPtr,
 		PackHeadingBarrier:       *flBenchPackHeadingBarrier,
+		BoundaryMethod:           *flBenchBoundaryMethod,
+		Beta:                     benchBetaPtr,
 	}
 
 	result, err := pipeline.Run(ctx, pipeCfg)

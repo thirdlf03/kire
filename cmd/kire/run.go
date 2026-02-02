@@ -193,6 +193,13 @@ func processFile(ctx context.Context, inFile, outDir string, multiFile bool, opt
 		effectiveMaxTokens = 0
 	}
 
+	// Beta pointer (nil = auto)
+	var betaPtr *float64
+	if cfg.Segment.BetaChanged {
+		b := cfg.Segment.Beta
+		betaPtr = &b
+	}
+
 	// Run pipeline
 	pipeCfg := pipeline.Config{
 		Source:                   source,
@@ -221,6 +228,8 @@ func processFile(ctx context.Context, inFile, outDir string, multiFile bool, opt
 		AtomicBoundaryProtection: cfg.Boundary.AtomicBoundary,
 		SplitCount:               opts.SplitCountPtr,
 		PackHeadingBarrier:       cfg.Segment.PackHeadingBarrier,
+		BoundaryMethod:           cfg.Segment.BoundaryMethod,
+		Beta:                     betaPtr,
 	}
 
 	result, err := pipeline.Run(ctx, pipeCfg)

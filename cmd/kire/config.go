@@ -45,6 +45,9 @@ type SegmentConfig struct {
 	ContextMaxDepth    int
 	SplitCount         int
 	PackHeadingBarrier int
+	BoundaryMethod     string  // "texttiling" (default) or "kcpd"
+	Beta               float64 // KCPD penalty (-1 = auto)
+	BetaChanged        bool    // true if user explicitly set --beta >= 0
 }
 
 // EmbedConfig holds embedding parameters.
@@ -126,6 +129,9 @@ func populateConfig(cmd *cobra.Command) CLIConfig {
 			ContextMaxDepth:    *flContextMaxDepth,
 			SplitCount:         *flSplitCount,
 			PackHeadingBarrier: *flPackHeadingBarrier,
+			BoundaryMethod:     *flBoundaryMethod,
+			Beta:               *flBeta,
+			BetaChanged:        *flBeta >= 0,
 		},
 		Embed: EmbedConfig{
 			Embedder:    *flEmbedder,

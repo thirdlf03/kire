@@ -563,6 +563,161 @@ func TestDetectBoundaries_BlockK_BackwardCompat(t *testing.T) {
 	}
 }
 
+func TestDetectBoundaries_KCPD_TwoTopics(t *testing.T) {
+	topicA := []model.Block{
+		{Kind: model.BlockHeading, Text: "Programming Languages", HeadingLevel: 1},
+		{Kind: model.BlockParagraph, Text: "Go is a statically typed compiled programming language designed at Google."},
+		{Kind: model.BlockParagraph, Text: "Rust is a systems programming language focused on safety and performance."},
+		{Kind: model.BlockParagraph, Text: "Python is a high-level interpreted programming language."},
+	}
+	topicB := []model.Block{
+		{Kind: model.BlockHeading, Text: "Cooking Recipes", HeadingLevel: 1},
+		{Kind: model.BlockParagraph, Text: "To make pasta, boil water and add spaghetti for ten minutes."},
+		{Kind: model.BlockParagraph, Text: "For a salad, mix lettuce, tomatoes, cucumber and olive oil dressing."},
+		{Kind: model.BlockParagraph, Text: "Baking bread requires flour, water, yeast and salt mixed together."},
+	}
+	blocks := append(topicA, topicB...)
+
+	embedder := embedding.NewMockEmbedder(128)
+	embeddings, err := embedder.Embed(context.Background(), blocks, embedding.EmbedOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	config := boundary.ScoringConfig{
+		Method: "kcpd",
+		MinGap: 1,
+	}
+	result := boundary.DetectBoundaries(embeddings, config)
+
+	if len(result.Boundaries) == 0 {
+		t.Fatal("KCPD: expected at least one boundary between two topics")
+	}
+
+	foundNearTransition := false
+	for _, b := range result.Boundaries {
+		if b >= 3 && b <= 5 {
+			foundNearTransition = true
+			break
+		}
+	}
+	if !foundNearTransition {
+		t.Errorf("KCPD: expected boundary near index 3-5, got boundaries at %v", result.Boundaries)
+	}
+
+	// Verify result fields are populated
+	if len(result.Similarities) == 0 {
+		t.Error("KCPD: similarities should be populated")
+	}
+	if len(result.DepthScores) == 0 {
+		t.Error("KCPD: depth scores should be populated")
+	}
+	if len(result.Confidences) != len(result.Boundaries) {
+		t.Errorf("KCPD: confidence count %d != boundary count %d",
+			len(result.Confidences), len(result.Boundaries))
+	}
+}
+
+func TestDetectBoundaries_KCPD_TargetCount(t *testing.T) {
+	topicA := []model.Block{
+		{Kind: model.BlockParagraph, Text: "Go is a compiled language."},
+		{Kind: model.BlockParagraph, Text: "Go has garbage collection."},
+		{Kind: model.BlockParagraph, Text: "Go supports concurrency."},
+	}
+	topicB := []model.Block{
+		{Kind: model.BlockParagraph, Text: "Pasta is made from flour."},
+		{Kind: model.BlockParagraph, Text: "Pizza originated in Naples."},
+		{Kind: model.BlockParagraph, Text: "Risotto uses arborio rice."},
+	}
+	topicC := []model.Block{
+		{Kind: model.BlockParagraph, Text: "NASA launched Voyager probes."},
+		{Kind: model.BlockParagraph, Text: "Mars rovers found water evidence."},
+		{Kind: model.BlockParagraph, Text: "SpaceX develops reusable rockets."},
+	}
+	blocks := append(append(topicA, topicB...), topicC...)
+
+	embedder := embedding.NewMockEmbedder(128)
+	embeddings, err := embedder.Embed(context.Background(), blocks, embedding.EmbedOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target := 3
+	config := boundary.ScoringConfig{
+		Method:      "kcpd",
+		MinGap:      1,
+		TargetCount: &target,
+	}
+	result := boundary.DetectBoundaries(embeddings, config)
+
+	// DP should produce exactly 2 boundaries for 3 segments
+	if len(result.Boundaries) != 2 {
+		t.Errorf("KCPD DP: expected 2 boundaries for target 3, got %d: %v",
+			len(result.Boundaries), result.Boundaries)
+	}
+}
+
+func TestDetectBoundaries_KCPD_Hints(t *testing.T) {
+	embeddings := []model.Embedding{
+		{BlockIndex: 0, Vector: []float64{1, 0, 0}},
+		{BlockIndex: 1, Vector: []float64{1, 0, 0}},
+		{BlockIndex: 2, Vector: []float64{0, 1, 0}},
+		{BlockIndex: 3, Vector: []float64{0, 1, 0}},
+		{BlockIndex: 4, Vector: []float64{0, 1, 0}},
+	}
+	config := boundary.ScoringConfig{
+		Method: "kcpd",
+		MinGap: 1,
+		Hints: []boundary.BoundaryHint{
+			{GapIndex: 1, Kind: boundary.HintProhibit},
+			{GapIndex: 3, Kind: boundary.HintEnforce},
+		},
+	}
+	result := boundary.DetectBoundaries(embeddings, config)
+
+	for _, b := range result.Boundaries {
+		if b == 1 {
+			t.Error("KCPD: gap 1 should be prohibited")
+		}
+	}
+
+	foundEnforced := false
+	for _, b := range result.Boundaries {
+		if b == 3 {
+			foundEnforced = true
+		}
+	}
+	if !foundEnforced {
+		t.Errorf("KCPD: enforced boundary at gap 3 not found, got %v", result.Boundaries)
+	}
+}
+
+func TestDetectBoundaries_KCPD_BackwardCompat(t *testing.T) {
+	// Default Method="" should use TextTiling, not KCPD
+	embeddings := []model.Embedding{
+		{BlockIndex: 0, Vector: []float64{1, 0, 0}},
+		{BlockIndex: 1, Vector: []float64{1, 0, 0}},
+		{BlockIndex: 2, Vector: []float64{0, 1, 0}},
+		{BlockIndex: 3, Vector: []float64{0, 1, 0}},
+	}
+	configDefault := boundary.ScoringConfig{Window: 0, MinGap: 1}
+	configTT := boundary.ScoringConfig{Window: 0, MinGap: 1, Method: "texttiling"}
+
+	resultDefault := boundary.DetectBoundaries(embeddings, configDefault)
+	resultTT := boundary.DetectBoundaries(embeddings, configTT)
+
+	if len(resultDefault.Boundaries) != len(resultTT.Boundaries) {
+		t.Fatalf("default vs texttiling mismatch: %v vs %v",
+			resultDefault.Boundaries, resultTT.Boundaries)
+	}
+	for i := range resultDefault.Boundaries {
+		if resultDefault.Boundaries[i] != resultTT.Boundaries[i] {
+			t.Errorf("boundary %d: default=%d texttiling=%d",
+				i, resultDefault.Boundaries[i], resultTT.Boundaries[i])
+		}
+	}
+}
+
 func TestDetectBoundaries_NilHints(t *testing.T) {
 	// Nil hints should not change behavior
 	embeddings := []model.Embedding{

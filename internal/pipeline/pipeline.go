@@ -56,6 +56,10 @@ type Config struct {
 	MaxLines int
 	// Heading level barrier for segment packing (0 = disabled)
 	PackHeadingBarrier int
+	// Boundary detection method: "" or "texttiling" (default), "kcpd"
+	BoundaryMethod string
+	// KCPD penalty parameter; nil = auto
+	Beta *float64
 	// Pipeline event hooks (nil = no hooks)
 	Hooks *Hooks
 	// Logger for pipeline messages (nil = default log.Printf)
@@ -183,6 +187,8 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		BlockK:    cfg.BlockK,
 		Threshold: cfg.Threshold,
 		MinGap:    cfg.MinGap,
+		Method:    cfg.BoundaryMethod,
+		Beta:      cfg.Beta,
 	}
 	if cfg.EnableBoundaryHints {
 		scoringCfg.Hints = boundary.GenerateHints(blocks, boundary.DefaultHintRules())

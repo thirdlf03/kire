@@ -37,6 +37,8 @@ type ScoringConfig struct {
 	Hints       []BoundaryHint // Optional boundary hints (nil = no hints)
 	TargetCount *int           // Desired number of segments; nil = auto (threshold-based)
 	BlockK      int            // Block comparison window: k embeddings per side (0 or 1 = adjacent)
+	Method      string         // Boundary detection method: "" or "texttiling" (default), "kcpd"
+	Beta        *float64       // KCPD penalty parameter; nil = auto
 }
 
 // BoundaryResult holds the detected boundaries and scoring details.
@@ -48,11 +50,17 @@ type BoundaryResult struct {
 	Confidences  []float64 // Confidence score (0.0-1.0) for each boundary
 }
 
-// DetectBoundaries identifies semantic boundaries between blocks using TextTiling.
+// DetectBoundaries identifies semantic boundaries between blocks.
+// When config.Method is "kcpd", uses Kernel Change-Point Detection with PELT.
+// Otherwise uses the default TextTiling approach.
 func DetectBoundaries(embeddings []model.Embedding, config ScoringConfig) BoundaryResult {
 	n := len(embeddings)
 	if n < 2 {
 		return BoundaryResult{}
+	}
+
+	if config.Method == "kcpd" {
+		return detectBoundariesKCPD(embeddings, config)
 	}
 
 	// Step 1: Compute cosine similarities (block window or adjacent)
