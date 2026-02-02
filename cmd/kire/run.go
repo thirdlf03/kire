@@ -59,7 +59,7 @@ func runSplitter(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Build embedder (shared across all input files)
-	embedder, embedInfo, closer, err := buildEmbedder(ctx, cfg.Embed.Embedder, cfg.Embed.EmbedModel, cfg.Embed.BatchSize, cfg.Embed.Concurrency, cfg.Embed.QPS, cfg.Embed.CachePath)
+	embedder, embedInfo, embedName, closer, err := buildEmbedder(ctx, cfg.Embed.Embedder, cfg.Embed.EmbedModel, cfg.Embed.BatchSize, cfg.Embed.Concurrency, cfg.Embed.QPS, cfg.Embed.CachePath)
 	if err != nil {
 		return fmt.Errorf("build embedder: %w", err)
 	}
@@ -98,6 +98,7 @@ func runSplitter(cmd *cobra.Command, args []string) error {
 		CLIConfig:        cfg,
 		Embedder:         embedder,
 		EmbedInfo:        embedInfo,
+		EmbedName:        embedName,
 		Estimator:        estimator,
 		PHConfig:         phCfg,
 		ThresholdPtr:     thresholdPtr,
@@ -332,7 +333,7 @@ func processFile(ctx context.Context, inFile, outDir string, multiFile bool, opt
 
 	// JSON summary output
 	if cfg.Output.JSON {
-		summary := buildSummary(inFile, fileOutDir, result, filenames, source, opts.EmbedInfo, cfg)
+		summary := buildSummary(inFile, fileOutDir, result, filenames, source, opts.EmbedInfo, opts.EmbedName, cfg)
 		if err := writeSummaryJSON(os.Stdout, summary); err != nil {
 			return fmt.Errorf("write JSON summary (%s): %w", inFile, err)
 		}
@@ -425,7 +426,7 @@ func writeJSONLOutput(inputPath, outDir string, result *pipeline.Result, filenam
 	return nil
 }
 
-func buildEmbedder(ctx context.Context, embedderType, model string, batchSize, concurrency int, qps float64, cachePath string) (embedding.Embedder, string, io.Closer, error) {
+func buildEmbedder(ctx context.Context, embedderType, model string, batchSize, concurrency int, qps float64, cachePath string) (embedding.Embedder, string, string, io.Closer, error) {
 	cfg := embedding.ProviderConfig{
 		Model:     model,
 		BatchSize: batchSize,
@@ -433,6 +434,7 @@ func buildEmbedder(ctx context.Context, embedderType, model string, batchSize, c
 
 	var base embedding.Embedder
 	baseInfo := ""
+	resolvedName := ""
 
 	if embedderType == "auto" {
 		// auto: try gemini first, fall back to tfidf
@@ -442,15 +444,19 @@ func buildEmbedder(ctx context.Context, embedderType, model string, batchSize, c
 			log.Println("No GEMINI_API_KEY set, using TF-IDF embedder")
 			base, baseInfo, err = embedding.Create(ctx, "tfidf", cfg)
 			if err != nil {
-				return nil, "", nil, fmt.Errorf("create tfidf embedder: %w", err)
+				return nil, "", "", nil, fmt.Errorf("create tfidf embedder: %w", err)
 			}
+			resolvedName = "tfidf"
+		} else {
+			resolvedName = "gemini"
 		}
 	} else {
 		var err error
 		base, baseInfo, err = embedding.Create(ctx, embedderType, cfg)
 		if err != nil {
-			return nil, "", nil, fmt.Errorf("--embedder=%s: %w", embedderType, err)
+			return nil, "", "", nil, fmt.Errorf("--embedder=%s: %w", embedderType, err)
 		}
+		resolvedName = embedderType
 	}
 
 	infoParts := []string{baseInfo}
@@ -460,7 +466,7 @@ func buildEmbedder(ctx context.Context, embedderType, model string, batchSize, c
 	if cachePath != "" {
 		c, err := cache.NewJSONCache(cachePath)
 		if err != nil {
-			return nil, "", nil, fmt.Errorf("create cache: %w", err)
+			return nil, "", "", nil, fmt.Errorf("create cache: %w", err)
 		}
 		cached := embedding.NewCachedEmbedder(base, c, model)
 		base = cached
@@ -478,7 +484,7 @@ func buildEmbedder(ctx context.Context, embedderType, model string, batchSize, c
 		}
 	}
 
-	return base, strings.Join(infoParts, " | "), closer, nil
+	return base, strings.Join(infoParts, " | "), resolvedName, closer, nil
 }
 
 func splitCSV(s string) []string {

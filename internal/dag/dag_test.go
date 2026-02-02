@@ -30,6 +30,21 @@ func TestBuild_NoReferences(t *testing.T) {
 	if len(d.Edges) != 0 {
 		t.Errorf("expected 0 edges, got %d", len(d.Edges))
 	}
+	if d.Edges == nil {
+		t.Error("edges should be empty slice, not nil")
+	}
+
+	// JSON should serialize as [] not null
+	data, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), `"edges":null`) {
+		t.Errorf("edges should be [] in JSON, got null: %s", string(data))
+	}
+	if !strings.Contains(string(data), `"edges":[]`) {
+		t.Errorf("expected edges:[] in JSON, got: %s", string(data))
+	}
 }
 
 func TestBuild_CrossReference(t *testing.T) {

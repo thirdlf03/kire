@@ -11,6 +11,7 @@ import (
 type Summary struct {
 	Version       string          `json:"version"`
 	Input         string          `json:"input"`
+	InputHash     string          `json:"input_hash"`
 	OutputDir     string          `json:"output_dir"`
 	Segments      []SegmentInfo   `json:"segments"`
 	Boundaries    []int           `json:"boundaries"`
@@ -50,6 +51,7 @@ type SummaryConfig struct {
 	Window        int     `json:"window"`
 	Threshold     float64 `json:"threshold"`
 	MinGap        int     `json:"min_gap"`
+	Embedder      string  `json:"embedder"`
 	EmbedderType  string  `json:"embedder_type"`
 	ContextFormat string  `json:"context_format"`
 	OverlapLines  int     `json:"overlap_lines"`
@@ -57,7 +59,7 @@ type SummaryConfig struct {
 	DryRun        bool    `json:"dry_run"`
 }
 
-func buildSummary(inputPath, outputDir string, result *pipeline.Result, filenames []string, source []byte, embedderInfo string, cfg CLIConfig) Summary {
+func buildSummary(inputPath, outputDir string, result *pipeline.Result, filenames []string, source []byte, embedderInfo, embedName string, cfg CLIConfig) Summary {
 	segments := make([]SegmentInfo, len(result.Segments))
 	totalTokens := 0
 
@@ -99,6 +101,7 @@ func buildSummary(inputPath, outputDir string, result *pipeline.Result, filename
 	return Summary{
 		Version:       version,
 		Input:         inputPath,
+		InputHash:     pipeline.SourceHash(source),
 		OutputDir:     outputDir,
 		Segments:      segments,
 		Boundaries:    normalizeBoundaries(result.Boundary.Boundaries),
@@ -111,6 +114,7 @@ func buildSummary(inputPath, outputDir string, result *pipeline.Result, filename
 			Window:        cfg.Segment.Window,
 			Threshold:     threshold,
 			MinGap:        cfg.Segment.MinGap,
+			Embedder:      embedName,
 			EmbedderType:  embedderInfo,
 			ContextFormat: cfg.Segment.ContextFormat,
 			OverlapLines:  cfg.Segment.OverlapLines,

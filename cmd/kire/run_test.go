@@ -101,7 +101,7 @@ func TestBuildLockConfig(t *testing.T) {
 }
 
 func TestBuildEmbedder_Mock(t *testing.T) {
-	embedder, info, closer, err := buildEmbedder(context.Background(), "mock", "", 32, 1, 0, "")
+	embedder, info, name, closer, err := buildEmbedder(context.Background(), "mock", "", 32, 1, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,13 +111,16 @@ func TestBuildEmbedder_Mock(t *testing.T) {
 	if !strings.Contains(info, "mock") {
 		t.Errorf("expected info to contain 'mock', got %q", info)
 	}
+	if name != "mock" {
+		t.Errorf("expected name='mock', got %q", name)
+	}
 	if closer != nil {
 		t.Error("expected nil closer for mock without cache")
 	}
 }
 
 func TestBuildEmbedder_TFIDF(t *testing.T) {
-	embedder, info, _, err := buildEmbedder(context.Background(), "tfidf", "", 32, 1, 0, "")
+	embedder, info, name, _, err := buildEmbedder(context.Background(), "tfidf", "", 32, 1, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,11 +130,14 @@ func TestBuildEmbedder_TFIDF(t *testing.T) {
 	if !strings.Contains(info, "tfidf") {
 		t.Errorf("expected info to contain 'tfidf', got %q", info)
 	}
+	if name != "tfidf" {
+		t.Errorf("expected name='tfidf', got %q", name)
+	}
 }
 
 func TestBuildEmbedder_Auto_NoAPIKey(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "")
-	embedder, info, _, err := buildEmbedder(context.Background(), "auto", "", 32, 1, 0, "")
+	embedder, info, name, _, err := buildEmbedder(context.Background(), "auto", "", 32, 1, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,10 +147,13 @@ func TestBuildEmbedder_Auto_NoAPIKey(t *testing.T) {
 	if !strings.Contains(info, "tfidf") {
 		t.Errorf("expected tfidf fallback, got %q", info)
 	}
+	if name != "tfidf" {
+		t.Errorf("expected name='tfidf', got %q", name)
+	}
 }
 
 func TestBuildEmbedder_Unknown(t *testing.T) {
-	_, _, _, err := buildEmbedder(context.Background(), "nonexistent", "", 32, 1, 0, "")
+	_, _, _, _, err := buildEmbedder(context.Background(), "nonexistent", "", 32, 1, 0, "")
 	if err == nil {
 		t.Fatal("expected error for unknown embedder")
 	}
@@ -152,7 +161,7 @@ func TestBuildEmbedder_Unknown(t *testing.T) {
 
 func TestBuildEmbedder_WithCache(t *testing.T) {
 	cachePath := filepath.Join(t.TempDir(), "test.cache.json")
-	embedder, info, closer, err := buildEmbedder(context.Background(), "mock", "", 32, 1, 0, cachePath)
+	embedder, info, name, closer, err := buildEmbedder(context.Background(), "mock", "", 32, 1, 0, cachePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,11 +174,14 @@ func TestBuildEmbedder_WithCache(t *testing.T) {
 	if !strings.Contains(info, "cache=") {
 		t.Errorf("expected info to contain 'cache=', got %q", info)
 	}
+	if name != "mock" {
+		t.Errorf("expected name='mock', got %q", name)
+	}
 	_ = closer.Close()
 }
 
 func TestBuildEmbedder_WithConcurrency(t *testing.T) {
-	embedder, info, _, err := buildEmbedder(context.Background(), "mock", "", 32, 4, 0, "")
+	embedder, info, name, _, err := buildEmbedder(context.Background(), "mock", "", 32, 4, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,15 +191,21 @@ func TestBuildEmbedder_WithConcurrency(t *testing.T) {
 	if !strings.Contains(info, "concurrency=4") {
 		t.Errorf("expected info to contain 'concurrency=4', got %q", info)
 	}
+	if name != "mock" {
+		t.Errorf("expected name='mock', got %q", name)
+	}
 }
 
 func TestBuildEmbedder_WithConcurrencyAndQPS(t *testing.T) {
-	_, info, _, err := buildEmbedder(context.Background(), "mock", "", 32, 4, 10.0, "")
+	_, info, name, _, err := buildEmbedder(context.Background(), "mock", "", 32, 4, 10.0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(info, "qps=") {
 		t.Errorf("expected info to contain 'qps=', got %q", info)
+	}
+	if name != "mock" {
+		t.Errorf("expected name='mock', got %q", name)
 	}
 }
 

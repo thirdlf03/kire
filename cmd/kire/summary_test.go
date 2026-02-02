@@ -58,7 +58,7 @@ func TestBuildSummary(t *testing.T) {
 	filenames := []string{"01-intro.md", "02-another.md"}
 	source := []byte("# Intro\nHello world\nAnother section")
 
-	s := buildSummary("test.md", "docs/test", result, filenames, source, "mock(dim=128)", testCLIConfig())
+	s := buildSummary("test.md", "docs/test", result, filenames, source, "mock(dim=128)", "mock", testCLIConfig())
 
 	if s.Version != version {
 		t.Errorf("expected version=%s, got %s", version, s.Version)
@@ -106,8 +106,15 @@ func TestBuildSummary(t *testing.T) {
 		t.Errorf("boundaries=%v, want [1]", s.Boundaries)
 	}
 
+	if s.Config.Embedder != "mock" {
+		t.Errorf("config.embedder=%s, want mock", s.Config.Embedder)
+	}
 	if s.Config.EmbedderType != "mock(dim=128)" {
 		t.Errorf("config.embedder_type=%s, want mock(dim=128)", s.Config.EmbedderType)
+	}
+
+	if s.InputHash != pipeline.SourceHash(source) {
+		t.Errorf("input_hash=%s, want %s", s.InputHash, pipeline.SourceHash(source))
 	}
 }
 
@@ -119,13 +126,16 @@ func TestBuildSummary_NilBoundaries(t *testing.T) {
 		},
 	}
 
-	s := buildSummary("test.md", "docs/test", result, nil, nil, "mock(dim=128)", testCLIConfig())
+	s := buildSummary("test.md", "docs/test", result, nil, nil, "mock(dim=128)", "mock", testCLIConfig())
 
 	if s.Boundaries == nil {
 		t.Error("boundaries should be empty slice, not nil")
 	}
 	if len(s.Boundaries) != 0 {
 		t.Errorf("boundaries len=%d, want 0", len(s.Boundaries))
+	}
+	if s.InputHash == "" {
+		t.Error("input_hash should not be empty")
 	}
 }
 
@@ -147,7 +157,7 @@ func TestWriteSummaryJSON(t *testing.T) {
 		},
 	}
 
-	s := buildSummary("input.md", "docs/input", result, []string{"01-test.md"}, []byte("test"), "mock(dim=128)", cfg)
+	s := buildSummary("input.md", "docs/input", result, []string{"01-test.md"}, []byte("test"), "mock(dim=128)", "mock", cfg)
 
 	var buf bytes.Buffer
 	if err := writeSummaryJSON(&buf, s); err != nil {
@@ -168,5 +178,11 @@ func TestWriteSummaryJSON(t *testing.T) {
 	}
 	if len(parsed.Segments) != 1 {
 		t.Errorf("segments len=%d, want 1", len(parsed.Segments))
+	}
+	if parsed.InputHash == "" {
+		t.Error("expected non-empty input_hash in JSON")
+	}
+	if parsed.Config.Embedder != "mock" {
+		t.Errorf("config.embedder=%s, want mock", parsed.Config.Embedder)
 	}
 }

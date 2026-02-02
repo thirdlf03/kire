@@ -69,7 +69,7 @@ func Build(segments []model.Segment, source []byte) DAG {
 	}
 
 	// Detect cross-references
-	var edges []Edge
+	edges := make([]Edge, 0)
 	for i, seg := range segments {
 		if seg.Range.Start < 0 || seg.Range.End > len(source) || seg.Range.Start > seg.Range.End {
 			continue

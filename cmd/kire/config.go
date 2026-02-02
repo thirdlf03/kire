@@ -87,6 +87,7 @@ type ProcessOptions struct {
 	CLIConfig
 	Embedder  embedding.Embedder
 	EmbedInfo string
+	EmbedName string
 	Estimator tokenizer.TokenEstimator
 	PHConfig  parser.PseudoHeadingConfig
 
