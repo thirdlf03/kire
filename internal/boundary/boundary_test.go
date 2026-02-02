@@ -718,6 +718,60 @@ func TestDetectBoundaries_KCPD_BackwardCompat(t *testing.T) {
 	}
 }
 
+func TestDetectBoundaries_Hybrid_TwoTopics(t *testing.T) {
+	topicA := []model.Block{
+		{Kind: model.BlockHeading, Text: "Programming Languages", HeadingLevel: 1},
+		{Kind: model.BlockParagraph, Text: "Go is a statically typed compiled programming language designed at Google."},
+		{Kind: model.BlockParagraph, Text: "Rust is a systems programming language focused on safety and performance."},
+		{Kind: model.BlockParagraph, Text: "Python is a high-level interpreted programming language."},
+	}
+	topicB := []model.Block{
+		{Kind: model.BlockHeading, Text: "Cooking Recipes", HeadingLevel: 1},
+		{Kind: model.BlockParagraph, Text: "To make pasta, boil water and add spaghetti for ten minutes."},
+		{Kind: model.BlockParagraph, Text: "For a salad, mix lettuce, tomatoes, cucumber and olive oil dressing."},
+		{Kind: model.BlockParagraph, Text: "Baking bread requires flour, water, yeast and salt mixed together."},
+	}
+	blocks := append(topicA, topicB...)
+
+	embedder := embedding.NewMockEmbedder(128)
+	embeddings, err := embedder.Embed(context.Background(), blocks, embedding.EmbedOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	config := boundary.ScoringConfig{
+		Method: "hybrid",
+		MinGap: 1,
+	}
+	result := boundary.DetectBoundaries(embeddings, config)
+
+	if len(result.Boundaries) == 0 {
+		t.Fatal("hybrid: expected at least one boundary between two topics")
+	}
+
+	foundNearTransition := false
+	for _, b := range result.Boundaries {
+		if b >= 3 && b <= 5 {
+			foundNearTransition = true
+			break
+		}
+	}
+	if !foundNearTransition {
+		t.Errorf("hybrid: expected boundary near index 3-5, got boundaries at %v", result.Boundaries)
+	}
+
+	if len(result.Similarities) == 0 {
+		t.Error("hybrid: similarities should be populated")
+	}
+	if len(result.DepthScores) == 0 {
+		t.Error("hybrid: depth scores should be populated")
+	}
+	if len(result.Confidences) != len(result.Boundaries) {
+		t.Errorf("hybrid: confidence count %d != boundary count %d",
+			len(result.Confidences), len(result.Boundaries))
+	}
+}
+
 func TestDetectBoundaries_NilHints(t *testing.T) {
 	// Nil hints should not change behavior
 	embeddings := []model.Embedding{

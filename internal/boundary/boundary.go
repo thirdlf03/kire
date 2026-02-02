@@ -21,6 +21,7 @@ const (
 const (
 	hintPreferBoost      = 0.1  // Depth score boost for HintPrefer
 	variancePenaltyCoeff = 0.01 // Coefficient for size variance penalty in EvaluateSegmentation
+	hybridKCPDWeight     = 0.5  // Weight of KCPD depth scores in hybrid mode
 )
 
 // BoundaryHint specifies a prohibition or enforcement at a specific gap index.
@@ -51,17 +52,21 @@ type BoundaryResult struct {
 }
 
 // DetectBoundaries identifies semantic boundaries between blocks.
-// When config.Method is "kcpd", uses Kernel Change-Point Detection with PELT.
-// Otherwise uses the default TextTiling approach.
-func DetectBoundaries(embeddings []model.Embedding, config ScoringConfig) BoundaryResult {
-	n := len(embeddings)
-	if n < 2 {
-		return BoundaryResult{}
-	}
+	// When config.Method is "kcpd", uses Kernel Change-Point Detection with PELT.
+	// When config.Method is "hybrid", blends TextTiling depth scores with KCPD signals.
+	// Otherwise uses the default TextTiling approach.
+	func DetectBoundaries(embeddings []model.Embedding, config ScoringConfig) BoundaryResult {
+		n := len(embeddings)
+		if n < 2 {
+			return BoundaryResult{}
+		}
 
-	if config.Method == "kcpd" {
-		return detectBoundariesKCPD(embeddings, config)
-	}
+		if config.Method == "kcpd" {
+			return detectBoundariesKCPD(embeddings, config)
+		}
+		if config.Method == "hybrid" {
+			return detectBoundariesHybrid(embeddings, config)
+		}
 
 	// Step 1: Compute cosine similarities (block window or adjacent)
 	sims := BlockSimilarities(embeddings, config.BlockK)
@@ -169,6 +174,143 @@ func DetectBoundaries(embeddings []model.Embedding, config ScoringConfig) Bounda
 		Threshold:    threshold,
 		Confidences:  confidences,
 	}
+}
+
+// detectBoundariesHybrid blends TextTiling depth scores with KCPD depth scores.
+func detectBoundariesHybrid(embeddings []model.Embedding, config ScoringConfig) BoundaryResult {
+	n := len(embeddings)
+	if n < 2 {
+		return BoundaryResult{}
+	}
+
+	// Step 1: Compute cosine similarities (block window or adjacent)
+	sims := BlockSimilarities(embeddings, config.BlockK)
+
+	// Step 2: Smooth similarities
+	smoothed := Smooth(sims, config.Window)
+
+	// Step 3: Compute base depth scores (TextTiling)
+	depths := DepthScore(smoothed)
+
+	// Step 3b: Blend KCPD depth scores into the base depths
+	kcpd := detectBoundariesKCPD(embeddings, config)
+	depths = blendDepthScores(depths, kcpd.DepthScores)
+
+	// Step 4: Apply hints — prohibit/prefer
+	if len(config.Hints) > 0 {
+		for _, h := range config.Hints {
+			if h.GapIndex < 0 || h.GapIndex >= len(depths) {
+				continue
+			}
+			switch h.Kind {
+			case HintProhibit:
+				depths[h.GapIndex] = 0
+			case HintPrefer:
+				depths[h.GapIndex] += hintPreferBoost
+			}
+		}
+	}
+
+	// Step 5: Select boundaries (same as TextTiling)
+	var boundaries []int
+	var threshold float64
+	if config.TargetCount != nil && *config.TargetCount > 1 {
+		k := *config.TargetCount - 1
+		minGap := config.MinGap
+		if minGap <= 0 {
+			minGap = 1
+		}
+		bestScore := math.Inf(-1)
+		for _, candidate := range []int{k - 1, k, k + 1} {
+			if candidate <= 0 {
+				continue
+			}
+			b := SelectBoundariesByCount(depths, candidate, minGap)
+			score := EvaluateSegmentation(b, n, depths)
+			if score > bestScore {
+				bestScore = score
+				boundaries = b
+			}
+		}
+		threshold = computeCutoff(depths, config.Threshold)
+	} else {
+		threshold = computeCutoff(depths, config.Threshold)
+		boundaries = selectBoundaries(depths, threshold, config.MinGap)
+	}
+
+	// Step 6: Apply hints — enforce
+	if len(config.Hints) > 0 {
+		enforced := make(map[int]bool)
+		for _, h := range config.Hints {
+			if h.Kind == HintEnforce && h.GapIndex >= 0 && h.GapIndex < n-1 {
+				enforced[h.GapIndex] = true
+			}
+		}
+		if len(enforced) > 0 {
+			existing := make(map[int]bool, len(boundaries))
+			for _, b := range boundaries {
+				existing[b] = true
+			}
+			for idx := range enforced {
+				if !existing[idx] {
+					boundaries = append(boundaries, idx)
+				}
+			}
+			slices.Sort(boundaries)
+		}
+	}
+
+	// Compute confidence for each boundary
+	maxDepth := maxFloat(depths)
+	confidences := make([]float64, len(boundaries))
+	for i, b := range boundaries {
+		if b >= 0 && b < len(depths) && maxDepth > 0 {
+			raw := (depths[b] - threshold) / maxDepth
+			if raw < 0 {
+				raw = 0
+			}
+			if raw > 1 {
+				raw = 1
+			}
+			confidences[i] = raw
+		}
+	}
+
+	return BoundaryResult{
+		Boundaries:   boundaries,
+		Similarities: sims,
+		DepthScores:  depths,
+		Threshold:    threshold,
+		Confidences:  confidences,
+	}
+}
+
+func blendDepthScores(base, kcpd []float64) []float64 {
+	if len(base) == 0 || len(base) != len(kcpd) {
+		return base
+	}
+	maxBase := maxFloat(base)
+	maxKCPD := maxFloat(kcpd)
+	if maxBase <= 0 || maxKCPD <= 0 {
+		return base
+	}
+	for i := range base {
+		base[i] += (kcpd[i] / maxKCPD) * maxBase * hybridKCPDWeight
+	}
+	return base
+}
+
+func maxFloat(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	max := values[0]
+	for _, v := range values[1:] {
+		if v > max {
+			max = v
+		}
+	}
+	return max
 }
 
 // MeanPool returns the element-wise mean of the given vectors.

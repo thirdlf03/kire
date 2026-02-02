@@ -120,7 +120,7 @@ func init() {
 	flPackHeadingBarrier = f.Int("pack-heading-barrier", 0, "Heading level barrier for segment packing (0=disabled)")
 	flWindow = f.Int("window", 3, "Similarity smoothing window size")
 	flBlockK = f.Int("block-k", 3, "Block comparison window (k embeddings per side, 1=adjacent)")
-	flBoundaryMethod = f.String("boundary-method", "texttiling", "Boundary detection method: texttiling|kcpd")
+	flBoundaryMethod = f.String("boundary-method", "texttiling", "Boundary detection method: texttiling|kcpd|hybrid")
 	flBeta = f.Float64("beta", -1, "KCPD penalty parameter (-1 = auto)")
 	flThreshold = f.Float64("threshold", -1, "Boundary depth score threshold (-1 = auto)")
 	flOverlapLines = f.Int("overlap", 0, "Overlap lines between segments")
@@ -184,7 +184,7 @@ func init() {
 		return append([]string{"auto"}, embedding.List()...), cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = rootCmd.RegisterFlagCompletionFunc("boundary-method", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"texttiling", "kcpd"}, cobra.ShellCompDirectiveNoFileComp
+		return []string{"texttiling", "kcpd", "hybrid"}, cobra.ShellCompDirectiveNoFileComp
 	})
 }
 

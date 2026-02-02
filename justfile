@@ -76,13 +76,22 @@ benchmark: build
 
 # Evaluate segmentation quality against gold standard
 bench-quality: build
-    ./kire bench testdata/gold/simple.json testdata/simple.md
-    @echo ""
-    ./kire bench testdata/gold/nested_headings.json testdata/nested_headings.md
-    @echo ""
-    ./kire bench testdata/gold/bench_long.json testdata/bench_long.md
-    @echo ""
-    ./kire bench testdata/gold/bench_xl.json testdata/bench_xl.md
+    #!/usr/bin/env bash
+    set -euo pipefail
+    methods=("texttiling" "kcpd" "hybrid")
+    docs=(
+        "testdata/gold/simple.json testdata/simple.md"
+        "testdata/gold/nested_headings.json testdata/nested_headings.md"
+        "testdata/gold/bench_long.json testdata/bench_long.md"
+        "testdata/gold/bench_xl.json testdata/bench_xl.md"
+    )
+    for method in "${methods[@]}"; do
+        echo "=== boundary-method: $method ==="
+        for doc in "${docs[@]}"; do
+            ./kire bench --boundary-method "$method" $doc
+            echo ""
+        done
+    done
 
 # Run Go performance benchmarks
 bench-perf:

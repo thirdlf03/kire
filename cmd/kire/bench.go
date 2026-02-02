@@ -101,7 +101,7 @@ func init() {
 	flBenchMinGap = f.Int("min-gap", 3, "Minimum gap between boundaries")
 	flBenchSplitCount = f.Int("split-count", 0, "Target number of segments (0 = auto)")
 	flBenchPackHeadingBarrier = f.Int("pack-heading-barrier", 0, "Heading level barrier for segment packing (0=disabled)")
-	flBenchBoundaryMethod = f.String("boundary-method", "texttiling", "Boundary detection method: texttiling|kcpd")
+	flBenchBoundaryMethod = f.String("boundary-method", "texttiling", "Boundary detection method: texttiling|kcpd|hybrid")
 	flBenchBeta = f.Float64("beta", -1, "KCPD penalty parameter (-1 = auto)")
 
 	// Pseudo-heading

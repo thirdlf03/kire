@@ -125,6 +125,7 @@ All options via `kire --help`. Common ones:
 --window int         Similarity smoothing window (default: 3)
 --threshold float    Boundary score threshold (-1 = auto)
 --overlap int        Overlapping lines between segments
+--boundary-method    texttiling|kcpd|hybrid
 --embedder string    auto|gemini|openai|ollama|tfidf|mock
 --cache string       Embedding cache file path
 --jsonl              JSONL metadata output (--jsonl=- for stdout)
@@ -278,7 +279,7 @@ Rankings differ between output quality and detection because the optimizer adjus
 
 ```bash
 just bench            # Quality + performance benchmarks
-just bench-quality    # Quality evaluation only
+just bench-quality    # Quality evaluation only (texttiling/kcpd/hybrid)
 just bench-perf       # Go performance benchmarks only
 ```
 

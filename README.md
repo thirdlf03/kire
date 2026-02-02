@@ -18,10 +18,12 @@ Wrote spec/index.md
 ## 特徴
 
 - セグメントを結合すると原文とバイトレベルで一致する（lossless）
-- `--min-tokens` / `--max-tokens` で LLM のコンテキストウィンドウに合わせた分割ができる
+- `--min-tokens` / `--max-tokens` / `--max-lines` で LLM のコンテキストウィンドウに合わせた分割ができる
 - 分割後も親見出しが各セグメントに自動付与される
 - Gemini / OpenAI / Ollama / TF-IDF / Mock から embedder を選べる。API キーなしでも動く
 - SHA256 content-addressable ID、品質スコアでエージェント連携にも対応
+- セクションロックで見出しと本文が分断されないように保護
+- 長い段落の自動分割と疑似見出し検出
 
 ## インストール
 
@@ -113,22 +115,73 @@ kire --embedder tfidf document.md
 
 # 複数ファイルを一括処理
 kire --in a.md --in b.md --out docs
+
+# 行数ベースでの制御（トークン制限を無効化）
+kire --max-lines 500 --max-tokens 0 document.md
+
+# デバッグモードで詳細ログを出力
+kire --debug document.md
+
+# 強制的に上書き
+kire --force document.md
 ```
 
 `--dry-run` でファイル書き出しなしの確認、`--report` で HTML の境界レポートが出る。
 
-全オプションは `kire --help` で。よく使うもの:
+### よく使うオプション
 
 ```
---min-tokens int     最小トークン数 (デフォルト: 300)
---max-tokens int     最大トークン数 (デフォルト: 3000)
---window int         類似度スムージング窓 (デフォルト: 3)
---threshold float    境界スコア閾値 (-1 = 自動)
---overlap int        セグメント間の重複行数
---embedder string    auto|gemini|openai|ollama|tfidf|mock
---cache string       埋め込みキャッシュのファイルパス
---jsonl              JSONL メタデータ出力 (--jsonl=- で stdout)
---agent-metadata     セグメント ID・品質スコアを含める
+--min-tokens int          最小トークン数 (デフォルト: 300)
+--max-tokens int          最大トークン数 (デフォルト: 3000, 0=無制限)
+--max-lines int           最大行数 (-1=自動, 0=無制限)
+--window int              類似度スムージング窓 (デフォルト: 3)
+--block-k int             ブロック比較窓 (デフォルト: 3)
+--threshold float         境界スコア閾値 (-1 = 自動)
+--overlap int             セグメント間の重複行数
+--min-gap int             境界間の最小間隔 (デフォルト: 3)
+--split-count int         目標セグメント数 (0=自動)
+--boundary-method         texttiling|kcpd|hybrid
+--embedder string         auto|gemini|openai|ollama|tfidf|mock
+--embed-model string      埋め込みモデル名
+--cache string            埋め込みキャッシュのファイルパス
+--jsonl string            JSONL メタデータ出力 (--jsonl=- で stdout)
+--agent-metadata          セグメント ID・品質スコアを含める
+--state-file string       インクリメンタル処理の状態ファイル
+--context-format          comment|front-matter|heading|none
+--context-max-depth int   コンテキストの最大見出し深度 (0=無制限)
+--prefix string           出力ファイル名のプレフィックス
+--out string              出力ディレクトリ (デフォルト: docs)
+--force                   既存出力ディレクトリを確認なしで上書き
+--dry-run                 ファイル書き出しなしで実行
+--quiet                   すべてのログ出力を抑制
+```
+
+### 高度な境界制御
+
+```bash
+# 境界検出の詳細制御
+kire --boundary-method kcpd --beta 0.5 document.md
+
+# 強制境界パターン（正規表現）
+kire --force-boundary "^## API|```go" document.md
+
+# 段落分割パターン
+kire --para-split-pattern "^\d+\.|^[-*] " document.md
+
+# セクションロックを無効化（見出しと本文が分断される可能性あり）
+kire --no-section-lock document.md
+
+# リスト境界の抑制を無効化
+kire --no-suppress-list-boundary document.md
+
+# アトミックブロック保護を無効化
+kire --no-atomic-boundary document.md
+
+# 疑似見出し検出を無効化
+kire --no-pseudo-heading document.md
+
+# 見出しバリアを設定（結合時にこのレベル以上の見出しで分割）
+kire --pack-heading-barrier 2 document.md
 ```
 
 ### マージ
@@ -182,6 +235,16 @@ kire --embedder ollama --embed-model mxbai-embed-large document.md
 kire --embedder tfidf document.md
 ```
 
+### 埋め込みキャッシュと並列処理
+
+```bash
+# キャッシュを使用（同じテキストの埋め込みを再利用）
+kire --cache embedding-cache.json document.md
+
+# 並列数と QPS 制限を設定
+kire --embed-concurrency 8 --embed-qps 10 document.md
+```
+
 ## マルチエージェント対応
 
 `--agent-metadata` を付けると、セグメントごとのメタデータが JSONL / JSON サマリに含まれる。
@@ -191,6 +254,7 @@ kire --embedder tfidf document.md
 - `segment_id`: SHA256 の content-addressable ID。前後セグメントへの双方向リンク付き
 - `coherence`: セグメント内ブロック間 cosine similarity の平均
 - `confidence`: 境界の信頼度
+- `prev_segment_id` / `next_segment_id`: 前後セグメントへのリンク
 
 Go API として使う場合、パイプラインの各ステージにフックを設定できる:
 
@@ -211,13 +275,33 @@ result, err := pipeline.Run(ctx, cfg)
 Source → Parse → ParaSplit → PseudoHeading → Tokenize → Embed → Boundary → Lock → Segment → Render → Output
 ```
 
-goldmark で Markdown を AST 化してブロック単位に分解するところから始まる。各ブロックには SourceRange（byte offset）と HeadingPath が付く。長い段落は事前に分割し、見出しがないブロックには疑似見出し検出を適用する。
+goldmark で Markdown を AST 化してブロック単位に分解するところから始まる。各ブロックには SourceRange（byte offset）と HeadingPath が付く。
 
-ブロックをベクトル化した後、隣接ブロック間の cosine similarity を計算し、smoothing → depth score → 閾値選定で境界を検出する。セクションロックにより見出し＋ボディが分断されないようにし、Greedy アルゴリズムでセグメントにまとめる。
+### パイプラインの詳細
 
-最後に SourceRange ベースで原文をバイトレベルで復元し、コンテキスト挿入と overlap 付与を経てファイルに書き出す。
+1. Parse: Markdown を AST 化してブロック単位に分解
+2. ParaSplit: 長い段落をパターンに基づいて事前分割
+3. PseudoHeading: 見出しがないブロックに対して疑似見出し検出
+4. Tokenize: 各ブロックのトークン数を推定
+5. Embed: ブロックをベクトル化（Gemini/OpenAI/Ollama/TF-IDF/Mock）
+6. Boundary: 隣接ブロック間の cosine similarity を計算し、smoothing → depth score → 閾値選定で境界を検出
+   - TextTiling: 伝統的な depth score ベース
+   - KCPD: Kernel Change Point Detection
+   - Hybrid: 複数手法の組み合わせ
+7. Lock: セクションロックで見出し＋ボディが分断されないように保護
+8. Segment: Greedy アルゴリズムでセグメントにまとめる（サイズ制約に応じて merge/split/pack）
+9. Render: SourceRange ベースで原文をバイトレベルで復元し、コンテキスト挿入と overlap 付与
+10. Output: ファイルに書き出し、index.md と DAG を生成
 
-<details>
+### 境界検出のヒント
+
+以下のルールで境界検出を制御可能:
+
+- 強制境界 (--force-boundary): 指定パターンにマッチするブロックの前に必ず境界を挿入
+- リスト境界抑制 (--suppress-list-boundary): 連続するリスト間や見出し→リストの間に境界を入れない
+- アトミックブロック保護 (--atomic-boundary): code/table/math ブロックの前に境界を入れない
+
+<detail>
 <summary>パッケージ構成</summary>
 
 ```
@@ -226,21 +310,40 @@ cmd/kire/
 ├── root.go          フラグ定義
 ├── run.go           メイン実行ロジック
 ├── merge.go         merge サブコマンド
-└── summary.go       JSON サマリ生成
+├── bench.go         ベンチマークサブコマンド
+├── summary.go       JSON サマリ生成
+├── config.go        設定構造体
+├── logger.go        ログ設定
+├── negatable.go     Negatable フラグユーティリティ
+└── completion.go    シェル補完
 
 internal/
 ├── model/           Block, Segment, Embedding, SourceRange
 ├── parser/          Markdown → []Block (goldmark)
-├── tokenizer/       トークン推定 (local/api/hybrid)
-├── embedding/       Embedder interface + 各プロバイダ + Cached/Concurrent デコレータ
-├── boundary/        TextTiling 境界スコアリング + confidence
-├── segment/         Greedy 分割 + ID 生成 + 品質スコア
-├── context/         親見出しコンテキスト挿入
+│   ├── paragraph_split.go    長い段落の分割
+│   └── pseudo_heading.go     疑似見出し検出
+├── tokenizer/       トークン推定
+├── embedding/       Embedder interface + 各プロバイダ
+│   ├── cached.go    キャッシュラッパー
+│   └── concurrent.go 並列処理ラッパー
+├── boundary/        境界検出アルゴリズム
+│   ├── boundary.go  TextTiling
+│   ├── kcpd.go      Kernel Change Point Detection
+│   ├── hints.go     ヒントルール
+│   └── report.go    HTML レポート生成
+├── segment/         セグメント処理
+│   ├── optimizer.go  Greedy 最適化
+│   ├── lock.go      セクションロック
+│   ├── id.go        ID 生成
+│   └── quality.go   品質スコア計算
+├── ctxheader/       親見出しコンテキスト挿入
 ├── output/          ファイル出力 + JSONL + マージ
 ├── cache/           埋め込みキャッシュ (JSON)
 ├── dag/             依存 DAG エクスポート (JSON/DOT)
 ├── concurrency/     Worker pool + rate limiter
-└── pipeline/        パイプライン統合 + フック + インクリメンタル処理
+├── pipeline/        パイプライン統合 + フック + インクリメンタル処理
+├── vecmath/         ベクトル計算（cosine similarity）
+└── eval/            ベンチマーク評価（Pk, WindowDiff, PRF）
 ```
 
 </details>
@@ -279,7 +382,7 @@ internal/
 
 ```bash
 just bench            # 品質評価 + パフォーマンスベンチマーク
-just bench-quality    # 品質評価のみ
+just bench-quality    # 品質評価のみ（texttiling/kcpd/hybrid）
 just bench-perf       # Go パフォーマンスベンチマークのみ
 ```
 

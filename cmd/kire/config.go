@@ -45,7 +45,7 @@ type SegmentConfig struct {
 	ContextMaxDepth    int
 	SplitCount         int
 	PackHeadingBarrier int
-	BoundaryMethod     string  // "texttiling" (default) or "kcpd"
+	BoundaryMethod     string  // "texttiling" (default), "kcpd", or "hybrid"
 	Beta               float64 // KCPD penalty (-1 = auto)
 	BetaChanged        bool    // true if user explicitly set --beta >= 0
 }
