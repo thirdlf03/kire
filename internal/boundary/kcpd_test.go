@@ -224,3 +224,121 @@ func totalCost(gram *GramMatrix, boundaries []int, n int) float64 {
 	cost += gram.SegmentCost(start, n)
 	return cost
 }
+
+func TestAutoBetaBIC(t *testing.T) {
+	a := []float64{1, 0, 0}
+	b := []float64{0, 1, 0}
+	embeddings := makeEmbeddings(a, a, a, b, b, b)
+	gram := NewGramMatrix(embeddings)
+
+	beta := AutoBetaBIC(&gram, 0)
+	if beta <= 0 {
+		t.Errorf("BIC beta should be positive, got %f", beta)
+	}
+	if math.IsNaN(beta) || math.IsInf(beta, 0) {
+		t.Errorf("BIC beta should be finite, got %f", beta)
+	}
+
+	// With BIC beta, should still find the clear boundary
+	boundaries := PELTDetect(&gram, beta, 1, nil)
+	if len(boundaries) == 0 {
+		t.Error("BIC beta should allow detection of clear boundary")
+	}
+}
+
+func TestAutoBetaBIC_SingleBlock(t *testing.T) {
+	embeddings := makeEmbeddings([]float64{1, 0})
+	gram := NewGramMatrix(embeddings)
+	beta := AutoBetaBIC(&gram, 0)
+	if beta <= 0 || math.IsNaN(beta) || math.IsInf(beta, 0) {
+		t.Errorf("BIC beta for single block should be positive finite, got %f", beta)
+	}
+}
+
+func TestAutoBetaBIC_ThreeTopics(t *testing.T) {
+	a := []float64{1, 0, 0}
+	b := []float64{0, 1, 0}
+	c := []float64{0, 0, 1}
+	embeddings := makeEmbeddings(a, a, a, b, b, b, c, c, c)
+	gram := NewGramMatrix(embeddings)
+
+	beta := AutoBetaBIC(&gram, 0)
+
+	// With BIC beta, should find both boundaries
+	boundaries := PELTDetect(&gram, beta, 1, nil)
+	// May not find exactly 2 depending on BIC selection, but should find some
+	if len(boundaries) < 1 {
+		t.Error("BIC beta should allow detection of boundaries in clear 3-topic data")
+	}
+}
+
+func TestAutoBetaCrossVal(t *testing.T) {
+	a := []float64{1, 0, 0}
+	b := []float64{0, 1, 0}
+	embeddings := makeEmbeddings(a, a, a, b, b, b)
+	gram := NewGramMatrix(embeddings)
+
+	beta := AutoBetaCrossVal(&gram, 5)
+	if beta <= 0 {
+		t.Errorf("CrossVal beta should be positive, got %f", beta)
+	}
+	if math.IsNaN(beta) || math.IsInf(beta, 0) {
+		t.Errorf("CrossVal beta should be finite, got %f", beta)
+	}
+
+	// With CrossVal beta, should still find the clear boundary
+	boundaries := PELTDetect(&gram, beta, 1, nil)
+	if len(boundaries) == 0 {
+		t.Error("CrossVal beta should allow detection of clear boundary")
+	}
+}
+
+func TestAutoBetaCrossVal_SingleBlock(t *testing.T) {
+	embeddings := makeEmbeddings([]float64{1, 0})
+	gram := NewGramMatrix(embeddings)
+	beta := AutoBetaCrossVal(&gram, 5)
+	// For single block, falls back to AutoBeta
+	if beta <= 0 || math.IsNaN(beta) || math.IsInf(beta, 0) {
+		t.Errorf("CrossVal beta for single block should be positive finite, got %f", beta)
+	}
+}
+
+func TestAutoBetaCrossVal_TwoBlocks(t *testing.T) {
+	embeddings := makeEmbeddings([]float64{1, 0}, []float64{0, 1})
+	gram := NewGramMatrix(embeddings)
+	beta := AutoBetaCrossVal(&gram, 5)
+	// For two blocks, falls back to AutoBeta
+	if beta <= 0 || math.IsNaN(beta) || math.IsInf(beta, 0) {
+		t.Errorf("CrossVal beta for two blocks should be positive finite, got %f", beta)
+	}
+}
+
+func TestDetectBoundariesKCPD_BetaStrategy(t *testing.T) {
+	a := []float64{1, 0, 0}
+	b := []float64{0, 1, 0}
+	embeddings := makeEmbeddings(a, a, a, b, b, b)
+
+	tests := []struct {
+		name     string
+		strategy string
+	}{
+		{"auto", "auto"},
+		{"bic", "bic"},
+		{"crossval", "crossval"},
+		{"empty (default)", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := ScoringConfig{
+				Method:       "kcpd",
+				MinGap:       1,
+				BetaStrategy: tt.strategy,
+			}
+			result := DetectBoundaries(embeddings, cfg)
+			if len(result.Boundaries) == 0 {
+				t.Errorf("strategy %q should detect boundary in clear data", tt.strategy)
+			}
+		})
+	}
+}

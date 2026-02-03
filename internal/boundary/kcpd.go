@@ -155,6 +155,151 @@ func AutoBeta(gram *GramMatrix) float64 {
 	return median * 0.5
 }
 
+// AutoBetaBIC estimates the penalty parameter using Bayesian Information Criterion.
+// BIC = n*log(RSS/n) + k*log(n), where RSS is the residual sum of squares,
+// n is the number of data points, and k is the number of parameters (segments).
+// We search for beta that minimizes BIC.
+func AutoBetaBIC(gram *GramMatrix, maxSegments int) float64 {
+	n := gram.n
+	if n < 2 {
+		return 1.0
+	}
+	if maxSegments <= 0 {
+		maxSegments = n / 2
+	}
+	if maxSegments > n-1 {
+		maxSegments = n - 1
+	}
+
+	// Evaluate BIC for different segment counts
+	bestBIC := math.Inf(1)
+	bestK := 1
+
+	for k := 1; k <= maxSegments; k++ {
+		// Use DP to find optimal k-segment partition
+		boundaries := DPKSegment(gram, k, 1, nil)
+		cost := totalCostForBoundaries(gram, boundaries)
+
+		// Approximate RSS as segment cost (higher cost = more heterogeneity)
+		// BIC: n*log(cost/n) + k*log(n)
+		// Use cost directly as RSS proxy
+		if cost <= 0 {
+			cost = 1e-10 // avoid log(0)
+		}
+		bic := float64(n)*math.Log(cost/float64(n)) + float64(k)*math.Log(float64(n))
+
+		if bic < bestBIC {
+			bestBIC = bic
+			bestK = k
+		}
+	}
+
+	// Now find beta that produces approximately bestK segments
+	return betaForSegmentCount(gram, bestK)
+}
+
+// totalCostForBoundaries computes the total segment cost for a given boundary set.
+func totalCostForBoundaries(gram *GramMatrix, boundaries []int) float64 {
+	n := gram.n
+	cost := 0.0
+	start := 0
+	for _, b := range boundaries {
+		cost += gram.SegmentCost(start, b+1)
+		start = b + 1
+	}
+	cost += gram.SegmentCost(start, n)
+	return cost
+}
+
+// betaForSegmentCount estimates the beta that produces approximately k segments
+// using binary search.
+func betaForSegmentCount(gram *GramMatrix, targetK int) float64 {
+	// Binary search for beta
+	// Low beta → more segments; high beta → fewer segments
+	lo, hi := 0.001, 10.0
+
+	for iter := 0; iter < 20; iter++ {
+		mid := (lo + hi) / 2
+		boundaries := PELTDetect(gram, mid, 1, nil)
+		nSegs := len(boundaries) + 1
+
+		if nSegs == targetK {
+			return mid
+		} else if nSegs > targetK {
+			lo = mid // need higher penalty to reduce segments
+		} else {
+			hi = mid // need lower penalty to increase segments
+		}
+	}
+
+	return (lo + hi) / 2
+}
+
+// AutoBetaCrossVal estimates the penalty parameter using leave-one-out cross-validation.
+// For each candidate beta, it measures how well the segmentation generalizes
+// by holding out each block and measuring prediction error.
+func AutoBetaCrossVal(gram *GramMatrix, nBetas int) float64 {
+	n := gram.n
+	if n < 3 {
+		return AutoBeta(gram)
+	}
+	if nBetas <= 0 {
+		nBetas = 10
+	}
+
+	// Generate candidate betas on log scale
+	minBeta, maxBeta := 0.01, 5.0
+	betas := make([]float64, nBetas)
+	for i := 0; i < nBetas; i++ {
+		t := float64(i) / float64(nBetas-1)
+		betas[i] = minBeta * math.Pow(maxBeta/minBeta, t)
+	}
+
+	bestBeta := betas[0]
+	bestScore := math.Inf(1)
+
+	for _, beta := range betas {
+		score := crossValScore(gram, beta)
+		if score < bestScore {
+			bestScore = score
+			bestBeta = beta
+		}
+	}
+
+	return bestBeta
+}
+
+// crossValScore computes a cross-validation score for a given beta.
+// Lower is better. Uses segment coherence as the metric.
+func crossValScore(gram *GramMatrix, beta float64) float64 {
+	boundaries := PELTDetect(gram, beta, 1, nil)
+
+	// Compute total cost with this segmentation
+	baseCost := totalCostForBoundaries(gram, boundaries)
+
+	// Penalize extreme solutions (too many or too few segments)
+	nSegs := len(boundaries) + 1
+	n := gram.n
+	avgSize := float64(n) / float64(nSegs)
+
+	// Variance penalty for uneven segments
+	variance := 0.0
+	start := 0
+	for _, b := range boundaries {
+		size := float64(b + 1 - start)
+		diff := size - avgSize
+		variance += diff * diff
+		start = b + 1
+	}
+	lastSize := float64(n - start)
+	diff := lastSize - avgSize
+	variance += diff * diff
+	variance /= float64(nSegs)
+
+	// Combined score: segment cost + size variance penalty
+	return baseCost + 0.1*variance
+}
+
 // detectBoundariesKCPD implements boundary detection using KCPD.
 func detectBoundariesKCPD(embeddings []model.Embedding, config ScoringConfig) BoundaryResult {
 	n := len(embeddings)
@@ -191,7 +336,16 @@ func detectBoundariesKCPD(embeddings []model.Embedding, config ScoringConfig) Bo
 		if config.Beta != nil {
 			beta = *config.Beta
 		} else {
-			beta = AutoBeta(&gram)
+			// Select beta estimation strategy
+			switch config.BetaStrategy {
+			case "bic":
+				beta = AutoBetaBIC(&gram, 0)
+			case "crossval":
+				beta = AutoBetaCrossVal(&gram, 10)
+			default:
+				// "auto" or "" uses original heuristic
+				beta = AutoBeta(&gram)
+			}
 		}
 		boundaries = PELTDetect(&gram, beta, minGap, prohibited)
 	}

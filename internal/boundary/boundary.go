@@ -32,14 +32,15 @@ type BoundaryHint struct {
 
 // ScoringConfig configures boundary detection.
 type ScoringConfig struct {
-	Window      int            // Moving average window size for smoothing
-	Threshold   *float64       // Depth score cutoff; nil = auto (mean - std/2)
-	MinGap      int            // Minimum gap between boundaries
-	Hints       []BoundaryHint // Optional boundary hints (nil = no hints)
-	TargetCount *int           // Desired number of segments; nil = auto (threshold-based)
-	BlockK      int            // Block comparison window: k embeddings per side (0 or 1 = adjacent)
-	Method      string         // Boundary detection method: "" or "texttiling" (default), "kcpd"
-	Beta        *float64       // KCPD penalty parameter; nil = auto
+	Window       int            // Moving average window size for smoothing
+	Threshold    *float64       // Depth score cutoff; nil = auto (mean - std/2)
+	MinGap       int            // Minimum gap between boundaries
+	Hints        []BoundaryHint // Optional boundary hints (nil = no hints)
+	TargetCount  *int           // Desired number of segments; nil = auto (threshold-based)
+	BlockK       int            // Block comparison window: k embeddings per side (0 or 1 = adjacent)
+	Method       string         // Boundary detection method: "" or "texttiling" (default), "kcpd"
+	Beta         *float64       // KCPD penalty parameter; nil = auto
+	BetaStrategy string         // Beta estimation strategy: "auto" (default), "bic", "crossval", "fixed"
 }
 
 // BoundaryResult holds the detected boundaries and scoring details.

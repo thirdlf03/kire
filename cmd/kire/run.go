@@ -230,6 +230,7 @@ func processFile(ctx context.Context, inFile, outDir string, multiFile bool, opt
 		PackHeadingBarrier:       cfg.Segment.PackHeadingBarrier,
 		BoundaryMethod:           cfg.Segment.BoundaryMethod,
 		Beta:                     betaPtr,
+		BetaStrategy:             cfg.Segment.BetaStrategy,
 	}
 
 	result, err := pipeline.Run(ctx, pipeCfg)

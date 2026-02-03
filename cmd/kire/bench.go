@@ -75,6 +75,7 @@ var (
 	flBenchAtomicBoundary       *bool
 	flBenchBoundaryMethod       *string
 	flBenchBeta                 *float64
+	flBenchBetaStrategy         *string
 )
 
 func init() {
@@ -103,6 +104,7 @@ func init() {
 	flBenchPackHeadingBarrier = f.Int("pack-heading-barrier", 0, "Heading level barrier for segment packing (0=disabled)")
 	flBenchBoundaryMethod = f.String("boundary-method", "texttiling", "Boundary detection method: texttiling|kcpd|hybrid")
 	flBenchBeta = f.Float64("beta", -1, "KCPD penalty parameter (-1 = auto)")
+	flBenchBetaStrategy = f.String("beta-strategy", "auto", "Beta estimation strategy: auto|bic|crossval")
 
 	// Pseudo-heading
 	flBenchPseudoHeading = negatable(benchCmd, "pseudo-heading", true, "Enable pseudo-heading detection")
@@ -233,6 +235,7 @@ func runBench(cmd *cobra.Command, args []string) error {
 		PackHeadingBarrier:       *flBenchPackHeadingBarrier,
 		BoundaryMethod:           *flBenchBoundaryMethod,
 		Beta:                     benchBetaPtr,
+		BetaStrategy:             *flBenchBetaStrategy,
 	}
 
 	result, err := pipeline.Run(ctx, pipeCfg)

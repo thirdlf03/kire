@@ -60,6 +60,8 @@ type Config struct {
 	BoundaryMethod string
 	// KCPD penalty parameter; nil = auto
 	Beta *float64
+	// Beta estimation strategy: "auto" (default), "bic", "crossval"
+	BetaStrategy string
 	// Pipeline event hooks (nil = no hooks)
 	Hooks *Hooks
 	// Logger for pipeline messages (nil = default log.Printf)
@@ -183,12 +185,13 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 	// Step 4: Detect boundaries
 	scoringCfg := boundary.ScoringConfig{
-		Window:    cfg.Window,
-		BlockK:    cfg.BlockK,
-		Threshold: cfg.Threshold,
-		MinGap:    cfg.MinGap,
-		Method:    cfg.BoundaryMethod,
-		Beta:      cfg.Beta,
+		Window:       cfg.Window,
+		BlockK:       cfg.BlockK,
+		Threshold:    cfg.Threshold,
+		MinGap:       cfg.MinGap,
+		Method:       cfg.BoundaryMethod,
+		Beta:         cfg.Beta,
+		BetaStrategy: cfg.BetaStrategy,
 	}
 	if cfg.EnableBoundaryHints {
 		scoringCfg.Hints = boundary.GenerateHints(blocks, boundary.DefaultHintRules())

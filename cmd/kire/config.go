@@ -48,6 +48,7 @@ type SegmentConfig struct {
 	BoundaryMethod     string  // "texttiling" (default), "kcpd", or "hybrid"
 	Beta               float64 // KCPD penalty (-1 = auto)
 	BetaChanged        bool    // true if user explicitly set --beta >= 0
+	BetaStrategy       string  // "auto" (default), "bic", "crossval"
 }
 
 // EmbedConfig holds embedding parameters.
@@ -132,6 +133,7 @@ func populateConfig(cmd *cobra.Command) CLIConfig {
 			BoundaryMethod:     *flBoundaryMethod,
 			Beta:               *flBeta,
 			BetaChanged:        *flBeta >= 0,
+			BetaStrategy:       *flBetaStrategy,
 		},
 		Embed: EmbedConfig{
 			Embedder:    *flEmbedder,

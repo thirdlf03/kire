@@ -138,6 +138,7 @@ negatable フラグ（`--no-section-lock` 等）は `negatable()` ヘルパー�
 - `GEMINI_API_KEY` — Gemini Embedding API キー。未設定でも TF-IDF/Mock embedder で動作する
 - `OPENAI_API_KEY` — OpenAI Embedding API キー（`--embedder openai` 使用時）
 - `OLLAMA_HOST` — Ollama サーバーアドレス（デフォルト: `http://localhost:11434`）
+- `SENTENCETRANSFORMER_HOST` — SentenceTransformer HTTP サーバーアドレス（デフォルト: `http://localhost:8080`）
 
 ## 品質評価ベンチマーク
 
