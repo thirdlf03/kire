@@ -237,6 +237,7 @@ func newTestBenchCmd() *cobra.Command {
 	f.Int("max-lines", -1, "")
 	f.Int("window", 3, "")
 	f.Int("block-k", 3, "")
+	f.Bool("block-k-auto", false, "")
 	f.Float64("threshold", -1, "")
 	f.Int("split-count", 0, "")
 	f.Int("pack-heading-barrier", 0, "")

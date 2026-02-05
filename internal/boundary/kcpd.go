@@ -7,6 +7,8 @@ import (
 	"github.com/thirdlf03/kire/internal/model"
 )
 
+const CosineKernelC = 0.022
+
 // PELTDetect finds optimal change points using the Pruned Exact Linear Time
 // algorithm with a cosine kernel cost function.
 //
@@ -269,6 +271,20 @@ func AutoBetaCrossVal(gram *GramMatrix, nBetas int) float64 {
 	return bestBeta
 }
 
+// AutoBetaTheory estimates the penalty parameter using a theoretical formula:
+// beta = C * sqrt(T * log(T)), where T is the number of data points.
+func AutoBetaTheory(gram *GramMatrix, c float64) float64 {
+	n := gram.n
+	if n < 2 {
+		return 1.0
+	}
+	if c <= 0 {
+		c = CosineKernelC
+	}
+	T := float64(n)
+	return c * math.Sqrt(T*math.Log(T))
+}
+
 // crossValScore computes a cross-validation score for a given beta.
 // Lower is better. Uses segment coherence as the metric.
 func crossValScore(gram *GramMatrix, beta float64) float64 {
@@ -342,6 +358,8 @@ func detectBoundariesKCPD(embeddings []model.Embedding, config ScoringConfig) Bo
 				beta = AutoBetaBIC(&gram, 0)
 			case "crossval":
 				beta = AutoBetaCrossVal(&gram, 10)
+			case "theory":
+				beta = AutoBetaTheory(&gram, CosineKernelC)
 			default:
 				// "auto" or "" uses original heuristic
 				beta = AutoBeta(&gram)

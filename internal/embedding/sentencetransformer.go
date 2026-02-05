@@ -21,6 +21,23 @@ const (
 	defaultSTBatchSize = 32
 )
 
+var stModelAliases = map[string]string{
+	"minilm":      "all-MiniLM-L6-v2",
+	"stella":      "dunzhang/stella_en_400M_v5",
+	"stella-400m": "dunzhang/stella_en_400M_v5",
+	"e5-large":    "intfloat/e5-large-v2",
+	"e5-instruct": "intfloat/e5-large-instruct",
+	"bge-large":   "BAAI/bge-large-en-v1.5",
+}
+
+// ResolveSTModel expands model aliases to full model names.
+func ResolveSTModel(model string) string {
+	if full, ok := stModelAliases[model]; ok {
+		return full
+	}
+	return model
+}
+
 func init() {
 	Register("sentencetransformer", func(_ context.Context, cfg ProviderConfig) (Embedder, string, error) {
 		host := os.Getenv("SENTENCETRANSFORMER_HOST")
@@ -37,6 +54,8 @@ func init() {
 		m := cfg.Model
 		if m == "" {
 			m = defaultSTModel
+		} else {
+			m = ResolveSTModel(m)
 		}
 		bs := cfg.BatchSize
 		if bs <= 0 {

@@ -98,6 +98,26 @@ func TestSentenceTransformerEmbedder_HTTPMock_Success(t *testing.T) {
 	}
 }
 
+func TestResolveSTModel(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"minilm", "all-MiniLM-L6-v2"},
+		{"stella", "dunzhang/stella_en_400M_v5"},
+		{"e5-large", "intfloat/e5-large-v2"},
+		{"custom/my-model", "custom/my-model"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := embedding.ResolveSTModel(tt.input)
+			if got != tt.want {
+				t.Errorf("ResolveSTModel(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSentenceTransformerEmbedder_HTTPMock_ServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

@@ -528,6 +528,29 @@ func TestBlockSimilarities_EdgeCases(t *testing.T) {
 	})
 }
 
+func TestAutoBlockK(t *testing.T) {
+	tests := []struct {
+		name      string
+		numBlocks int
+		defaultK  int
+		want      int
+	}{
+		{"short doc uses 1", 25, 3, 1},
+		{"at threshold uses default", 50, 3, 3},
+		{"long doc uses default", 100, 3, 3},
+		{"short with default 1", 25, 1, 1},
+		{"very short", 5, 3, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := boundary.AutoBlockK(tt.numBlocks, tt.defaultK)
+			if got != tt.want {
+				t.Errorf("AutoBlockK(%d, %d) = %d, want %d", tt.numBlocks, tt.defaultK, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDetectBoundaries_BlockK_BackwardCompat(t *testing.T) {
 	// BlockK=0 should produce same results as default (no BlockK)
 	embeddings := []model.Embedding{

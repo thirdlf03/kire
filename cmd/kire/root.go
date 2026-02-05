@@ -89,6 +89,7 @@ var (
 	flAgentMetadata        *bool
 	flStateFile            *string
 	flBlockK               *int
+	flBlockKAuto           *bool
 	flBoundaryMethod       *string
 	flBeta                 *float64
 	flBetaStrategy         *string
@@ -121,9 +122,10 @@ func init() {
 	flPackHeadingBarrier = f.Int("pack-heading-barrier", 0, "Heading level barrier for segment packing (0=disabled)")
 	flWindow = f.Int("window", 3, "Similarity smoothing window size")
 	flBlockK = f.Int("block-k", 3, "Block comparison window (k embeddings per side, 1=adjacent)")
+	flBlockKAuto = f.Bool("block-k-auto", false, "Automatically select block-k based on document size")
 	flBoundaryMethod = f.String("boundary-method", "texttiling", "Boundary detection method: texttiling|kcpd|hybrid")
 	flBeta = f.Float64("beta", -1, "KCPD penalty parameter (-1 = auto)")
-	flBetaStrategy = f.String("beta-strategy", "auto", "Beta estimation strategy: auto|bic|crossval")
+	flBetaStrategy = f.String("beta-strategy", "auto", "Beta estimation strategy: auto|bic|crossval|theory")
 	flThreshold = f.Float64("threshold", -1, "Boundary depth score threshold (-1 = auto)")
 	flOverlapLines = f.Int("overlap", 0, "Overlap lines between segments")
 	flContextFormat = f.String("context-format", "comment", "Context format: comment|front-matter|heading|none")
@@ -189,7 +191,7 @@ func init() {
 		return []string{"texttiling", "kcpd", "hybrid"}, cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = rootCmd.RegisterFlagCompletionFunc("beta-strategy", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"auto", "bic", "crossval"}, cobra.ShellCompDirectiveNoFileComp
+		return []string{"auto", "bic", "crossval", "theory"}, cobra.ShellCompDirectiveNoFileComp
 	})
 }
 

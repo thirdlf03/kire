@@ -325,6 +325,7 @@ func TestDetectBoundariesKCPD_BetaStrategy(t *testing.T) {
 		{"auto", "auto"},
 		{"bic", "bic"},
 		{"crossval", "crossval"},
+		{"theory", "theory"},
 		{"empty (default)", ""},
 	}
 
@@ -338,6 +339,41 @@ func TestDetectBoundariesKCPD_BetaStrategy(t *testing.T) {
 			result := DetectBoundaries(embeddings, cfg)
 			if len(result.Boundaries) == 0 {
 				t.Errorf("strategy %q should detect boundary in clear data", tt.strategy)
+			}
+		})
+	}
+}
+
+func TestAutoBetaTheory(t *testing.T) {
+	tests := []struct {
+		name string
+		n    int
+		c    float64
+	}{
+		{"25 blocks default C", 25, 0},
+		{"100 blocks default C", 100, 0},
+		{"25 blocks custom C", 25, 0.1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			embeddings := make([]model.Embedding, tt.n)
+			for i := range embeddings {
+				embeddings[i] = model.Embedding{BlockIndex: i, Vector: []float64{1, 0, 0}}
+			}
+			gram := NewGramMatrix(embeddings)
+			beta := AutoBetaTheory(&gram, tt.c)
+			if beta <= 0 || math.IsNaN(beta) || math.IsInf(beta, 0) {
+				t.Errorf("beta should be positive finite, got %f", beta)
+			}
+
+			c := tt.c
+			if c <= 0 {
+				c = CosineKernelC
+			}
+			T := float64(tt.n)
+			expected := c * math.Sqrt(T*math.Log(T))
+			if math.Abs(beta-expected) > 1e-9 {
+				t.Errorf("beta = %f, expected %f", beta, expected)
 			}
 		})
 	}

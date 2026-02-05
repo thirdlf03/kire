@@ -136,11 +136,13 @@ kire --force document.md
 --max-lines int           最大行数 (-1=自動, 0=無制限)
 --window int              類似度スムージング窓 (デフォルト: 3)
 --block-k int             ブロック比較窓 (デフォルト: 3)
+--block-k-auto            ドキュメント長に応じて block-k を自動選択
 --threshold float         境界スコア閾値 (-1 = 自動)
 --overlap int             セグメント間の重複行数
 --min-gap int             境界間の最小間隔 (デフォルト: 3)
 --split-count int         目標セグメント数 (0=自動)
 --boundary-method         texttiling|kcpd|hybrid
+--beta-strategy           auto|bic|crossval|theory
 --embedder string         auto|gemini|openai|ollama|tfidf|mock
 --embed-model string      埋め込みモデル名
 --cache string            埋め込みキャッシュのファイルパス
@@ -160,7 +162,7 @@ kire --force document.md
 
 ```bash
 # 境界検出の詳細制御
-kire --boundary-method kcpd --beta 0.5 document.md
+kire --boundary-method kcpd --beta-strategy theory document.md
 
 # 強制境界パターン（正規表現）
 kire --force-boundary "^## API|```go" document.md

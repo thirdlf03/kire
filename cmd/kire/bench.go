@@ -59,6 +59,7 @@ var (
 	flBenchMaxLines           *int
 	flBenchWindow             *int
 	flBenchBlockK             *int
+	flBenchBlockKAuto         *bool
 	flBenchThreshold          *float64
 	flBenchMinGap             *int
 	flBenchSplitCount         *int
@@ -98,13 +99,14 @@ func init() {
 	flBenchMaxLines = f.Int("max-lines", -1, "Maximum lines per segment (-1 = auto, 0 = unlimited)")
 	flBenchWindow = f.Int("window", 3, "Similarity smoothing window size")
 	flBenchBlockK = f.Int("block-k", 3, "Block comparison window (k embeddings per side, 1=adjacent)")
+	flBenchBlockKAuto = f.Bool("block-k-auto", false, "Automatically select block-k based on document size")
 	flBenchThreshold = f.Float64("threshold", -1, "Boundary depth score threshold (-1 = auto)")
 	flBenchMinGap = f.Int("min-gap", 3, "Minimum gap between boundaries")
 	flBenchSplitCount = f.Int("split-count", 0, "Target number of segments (0 = auto)")
 	flBenchPackHeadingBarrier = f.Int("pack-heading-barrier", 0, "Heading level barrier for segment packing (0=disabled)")
 	flBenchBoundaryMethod = f.String("boundary-method", "texttiling", "Boundary detection method: texttiling|kcpd|hybrid")
 	flBenchBeta = f.Float64("beta", -1, "KCPD penalty parameter (-1 = auto)")
-	flBenchBetaStrategy = f.String("beta-strategy", "auto", "Beta estimation strategy: auto|bic|crossval")
+	flBenchBetaStrategy = f.String("beta-strategy", "auto", "Beta estimation strategy: auto|bic|crossval|theory")
 
 	// Pseudo-heading
 	flBenchPseudoHeading = negatable(benchCmd, "pseudo-heading", true, "Enable pseudo-heading detection")
@@ -129,6 +131,9 @@ func init() {
 	})
 	_ = benchCmd.RegisterFlagCompletionFunc("profile", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"embedder", "output"}, cobra.ShellCompDirectiveNoFileComp
+	})
+	_ = benchCmd.RegisterFlagCompletionFunc("beta-strategy", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"auto", "bic", "crossval", "theory"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
 	rootCmd.AddCommand(benchCmd)
@@ -221,6 +226,7 @@ func runBench(cmd *cobra.Command, args []string) error {
 		MaxLines:                 *flBenchMaxLines,
 		Window:                   *flBenchWindow,
 		BlockK:                   *flBenchBlockK,
+		BlockKAuto:               *flBenchBlockKAuto,
 		Threshold:                thresholdPtr,
 		MinGap:                   *flBenchMinGap,
 		EmbedTaskType:            "SEMANTIC_SIMILARITY",

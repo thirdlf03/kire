@@ -22,7 +22,39 @@
 
 ## Log
 
-### 2026-02-03 21:30
+### 2026-02-03 23:10
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta-strategy theory --embedder tfidf testdata/gold/bench_xl.json testdata/bench_xl.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 21 | 0.03 | 0.04 | 0.85 | 0.94 | 0.89 |
+
+**Notes:** C=0.088 → 0.022 に修正後。auto (F1=0.97) より低いが機能するようになった
+
+---
+
+### 2026-02-03 23:10
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta-strategy theory --embedder tfidf testdata/gold/bench_long.json testdata/bench_long.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 13 | 0.27 | 0.68 | 0.33 | 0.57 | 0.42 |
+
+**Notes:** C=0.022 で auto と同等の結果
+
+---
+
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -36,7 +68,7 @@
 
 ---
 
-### 2026-02-03 21:30
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -52,7 +84,21 @@
 
 ---
 
-### 2026-02-03 21:30
+### 2026-02-03 22:42
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta-strategy theory --embedder tfidf testdata/gold/bench_xl.json testdata/bench_xl.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 1 | 0.53 | 0.53 | 0.00 | 0.00 | 0.00 |
+
+---
+
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -68,7 +114,7 @@
 
 ---
 
-### 2026-02-03 21:30
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -84,7 +130,7 @@
 
 ---
 
-### 2026-02-03 21:30
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -100,7 +146,7 @@
 
 ---
 
-### 2026-02-03 21:31
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -114,7 +160,7 @@
 
 ---
 
-### 2026-02-03 21:31
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -130,7 +176,7 @@
 
 ---
 
-### 2026-02-03 21:31
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -146,7 +192,7 @@
 
 ---
 
-### 2026-02-03 21:31
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -162,7 +208,7 @@
 
 ---
 
-### 2026-02-03 21:32
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -176,7 +222,7 @@
 
 ---
 
-### 2026-02-03 21:32
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -192,7 +238,7 @@
 
 ---
 
-### 2026-02-03 21:40
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -206,7 +252,7 @@
 
 ---
 
-### 2026-02-03 21:40
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -222,7 +268,21 @@
 
 ---
 
-### 2026-02-03 21:40
+### 2026-02-03 22:42
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta-strategy theory --embedder tfidf testdata/gold/bench_long.json testdata/bench_long.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 4 | 0.77 | 0.77 | 0.00 | 0.00 | 0.00 |
+
+---
+
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -236,7 +296,7 @@
 
 ---
 
-### 2026-02-03 21:40
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -252,7 +312,7 @@
 
 ---
 
-### 2026-02-03 21:40
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -266,7 +326,7 @@
 
 ---
 
-### 2026-02-03 21:40
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -282,7 +342,7 @@
 
 ---
 
-### 2026-02-03 21:41
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -296,7 +356,7 @@
 
 ---
 
-### 2026-02-03 21:41
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -312,7 +372,7 @@
 
 ---
 
-### 2026-02-03 21:50
+### 2026-02-03 22:31
 
 **Command:**
 ```bash
@@ -338,3 +398,171 @@ Detected: [1, 4, 7, 11, 14, 18, 21]
 - False positive: 7
 
 bench_long の gold boundaries はセクション内の微妙なトピック遷移を指定しており、正確な位置検出が難しい
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 0.01 --embedder tfidf testdata/gold/bench_xl.json testdata/bench_xl.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 53 | 0.47 | 0.74 | 0.19 | 0.56 | 0.29 |
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 0.05 --embedder tfidf testdata/gold/bench_xl.json testdata/bench_xl.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 47 | 0.48 | 0.69 | 0.28 | 0.72 | 0.41 |
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 0.1 --embedder tfidf testdata/gold/bench_xl.json testdata/bench_xl.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 21 | 0.02 | 0.03 | 0.90 | 1.00 | 0.95 |
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 0.2 --embedder tfidf testdata/gold/bench_xl.json testdata/bench_xl.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 21 | 0.02 | 0.03 | 0.90 | 1.00 | 0.95 |
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 0.5 --embedder tfidf testdata/gold/bench_xl.json testdata/bench_xl.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 20 | 0.01 | 0.01 | 0.95 | 1.00 | 0.97 |
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 1.0 --embedder tfidf testdata/gold/bench_xl.json testdata/bench_xl.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 19 | 0.02 | 0.02 | 0.94 | 0.94 | 0.94 |
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 0.01 --embedder tfidf testdata/gold/bench_long.json testdata/bench_long.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 13 | 0.27 | 0.68 | 0.33 | 0.57 | 0.42 |
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 0.05 --embedder tfidf testdata/gold/bench_long.json testdata/bench_long.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 13 | 0.27 | 0.68 | 0.33 | 0.57 | 0.42 |
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 0.1 --embedder tfidf testdata/gold/bench_long.json testdata/bench_long.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 13 | 0.27 | 0.68 | 0.33 | 0.57 | 0.42 |
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 0.2 --embedder tfidf testdata/gold/bench_long.json testdata/bench_long.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 13 | 0.27 | 0.68 | 0.33 | 0.57 | 0.42 |
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 0.5 --embedder tfidf testdata/gold/bench_long.json testdata/bench_long.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 7 | 0.55 | 0.64 | 0.17 | 0.14 | 0.15 |
+
+---
+
+### 2026-02-03 22:55
+
+**Command:**
+```bash
+./kire bench --profile embedder --no-baselines --boundary-method kcpd --beta 1.0 --embedder tfidf testdata/gold/bench_long.json testdata/bench_long.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (tfidf) | 2 | 0.68 | 0.68 | 0.00 | 0.00 | 0.00 |

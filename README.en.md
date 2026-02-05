@@ -122,10 +122,12 @@ All options via `kire --help`. Common ones:
 ```
 --min-tokens int     Minimum token count (default: 300)
 --max-tokens int     Maximum token count (default: 3000)
+--block-k-auto       Automatically select block-k based on document size
 --window int         Similarity smoothing window (default: 3)
 --threshold float    Boundary score threshold (-1 = auto)
 --overlap int        Overlapping lines between segments
 --boundary-method    texttiling|kcpd|hybrid
+--beta-strategy      auto|bic|crossval|theory
 --embedder string    auto|gemini|openai|ollama|tfidf|mock
 --cache string       Embedding cache file path
 --jsonl              JSONL metadata output (--jsonl=- for stdout)

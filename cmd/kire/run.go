@@ -211,6 +211,7 @@ func processFile(ctx context.Context, inFile, outDir string, multiFile bool, opt
 		MaxLines:                 cfg.Segment.MaxLines,
 		Window:                   cfg.Segment.Window,
 		BlockK:                   cfg.Segment.BlockK,
+		BlockKAuto:               cfg.Segment.BlockKAuto,
 		Threshold:                opts.ThresholdPtr,
 		MinGap:                   cfg.Segment.MinGap,
 		OverlapLines:             cfg.Segment.OverlapLines,

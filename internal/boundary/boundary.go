@@ -22,6 +22,7 @@ const (
 	hintPreferBoost      = 0.1  // Depth score boost for HintPrefer
 	variancePenaltyCoeff = 0.01 // Coefficient for size variance penalty in EvaluateSegmentation
 	hybridKCPDWeight     = 0.5  // Weight of KCPD depth scores in hybrid mode
+	blockKAutoThreshold  = 50   // Block count threshold for auto block-k
 )
 
 // BoundaryHint specifies a prohibition or enforcement at a specific gap index.
@@ -40,7 +41,7 @@ type ScoringConfig struct {
 	BlockK       int            // Block comparison window: k embeddings per side (0 or 1 = adjacent)
 	Method       string         // Boundary detection method: "" or "texttiling" (default), "kcpd"
 	Beta         *float64       // KCPD penalty parameter; nil = auto
-	BetaStrategy string         // Beta estimation strategy: "auto" (default), "bic", "crossval", "fixed"
+	BetaStrategy string         // Beta estimation strategy: "auto" (default), "bic", "crossval", "theory"
 }
 
 // BoundaryResult holds the detected boundaries and scoring details.
@@ -50,6 +51,16 @@ type BoundaryResult struct {
 	DepthScores  []float64 // Depth scores for each gap
 	Threshold    float64   // Depth score cutoff used for boundary selection
 	Confidences  []float64 // Confidence score (0.0-1.0) for each boundary
+}
+
+// AutoBlockK returns an adaptive BlockK value based on document length.
+// For short documents (< blockKAutoThreshold), returns 1 to preserve local signals.
+// For longer documents, returns the provided default value.
+func AutoBlockK(numBlocks, defaultK int) int {
+	if numBlocks < blockKAutoThreshold {
+		return 1
+	}
+	return defaultK
 }
 
 // DetectBoundaries identifies semantic boundaries between blocks.

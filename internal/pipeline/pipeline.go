@@ -28,6 +28,7 @@ type Config struct {
 	MaxTokens       int
 	Window          int
 	BlockK          int
+	BlockKAuto      bool
 	Threshold       *float64
 	MinGap          int
 	OverlapLines    int
@@ -184,9 +185,13 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 
 	// Step 4: Detect boundaries
+	blockK := cfg.BlockK
+	if cfg.BlockKAuto {
+		blockK = boundary.AutoBlockK(len(blocks), blockK)
+	}
 	scoringCfg := boundary.ScoringConfig{
 		Window:       cfg.Window,
-		BlockK:       cfg.BlockK,
+		BlockK:       blockK,
 		Threshold:    cfg.Threshold,
 		MinGap:       cfg.MinGap,
 		Method:       cfg.BoundaryMethod,
