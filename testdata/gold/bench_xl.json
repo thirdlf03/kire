@@ -3,8 +3,8 @@
   "unit": "block",
   "boundaries": [4, 15, 26, 37, 48, 59, 70, 81, 92],
   "params": {
-    "eval_stage": "raw",
-    "tolerance": 1
+    "eval_stage": "final",
+    "tolerance": 0
   },
   "notes": {
     "description": "104 blocks: synthetic event processing design review with 9 sections. Heading-level segmentation.",

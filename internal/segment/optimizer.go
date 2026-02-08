@@ -35,7 +35,7 @@ func Optimize(blocks []model.Block, br boundary.BoundaryResult, config OptConfig
 	}
 
 	// Adjust boundaries: shift boundary after heading to before heading
-	boundaries := adjustHeadingBoundaries(blocks, br.Boundaries)
+	boundaries := AdjustHeadingBoundaries(blocks, br.Boundaries)
 
 	// Initial split at boundaries
 	segments := splitAtBoundaries(blocks, boundaries)
@@ -57,22 +57,34 @@ func PackSegments(segments []model.Segment, config OptConfig) []model.Segment {
 	return packSegments(segments, config.MaxTokens, config.MaxLines, config.PackHeadingBarrier)
 }
 
-// adjustHeadingBoundaries shifts boundaries that fall right after a heading
-// to right before the heading.
-func adjustHeadingBoundaries(blocks []model.Block, boundaries []int) []int {
+// adjustHeadingBoundaries snaps boundaries into heading runs so that
+// headings always start the next segment.
+//
+// A boundary at gap b means a split between block[b] and block[b+1].
+// If block[b] is a heading, the heading would end the current segment
+// instead of starting the next one. This function walks backward through
+// any consecutive heading run and places the boundary just before the
+// first heading in the run.
+func AdjustHeadingBoundaries(blocks []model.Block, boundaries []int) []int {
 	if len(boundaries) == 0 {
 		return boundaries
 	}
 	adjusted := slices.Clone(boundaries)
 
 	for i, b := range adjusted {
-		// A boundary at index b means a split between block[b] and block[b+1].
-		// If block[b+1] exists and is a heading, we want the heading to start
-		// the next segment. But the boundary already does that—block[b+1] starts next segment.
-		// The issue is when the boundary is at the heading itself:
-		// If block[b] is a heading, move boundary to b-1 so heading starts the next segment.
 		if b < len(blocks) && blocks[b].Kind == model.BlockHeading && b > 0 {
-			adjusted[i] = b - 1
+			// Walk backward through consecutive headings to find the run start.
+			start := b
+			for start > 0 && blocks[start-1].Kind == model.BlockHeading {
+				start--
+			}
+			if start > 0 {
+				adjusted[i] = start - 1
+			} else {
+				// Heading run starts at block 0; place boundary at gap 0
+				// so the first heading begins the next segment.
+				adjusted[i] = 0
+			}
 		}
 	}
 

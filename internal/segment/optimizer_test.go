@@ -426,6 +426,90 @@ func TestMergeAt_NoSliceAliasing(t *testing.T) {
 	}
 }
 
+func TestAdjustHeadingBoundaries(t *testing.T) {
+	h := func(level int) model.Block {
+		return model.Block{Kind: model.BlockHeading, HeadingLevel: level}
+	}
+	p := model.Block{Kind: model.BlockParagraph}
+
+	tests := []struct {
+		name       string
+		blocks     []model.Block
+		boundaries []int
+		want       []int
+	}{
+		{
+			name:       "single heading snap back",
+			blocks:     []model.Block{p, h(2), p},
+			boundaries: []int{1},
+			want:       []int{0},
+		},
+		{
+			name:       "already before heading",
+			blocks:     []model.Block{p, h(2), p},
+			boundaries: []int{0},
+			want:       []int{0},
+		},
+		{
+			name:       "consecutive headings snap to run start",
+			blocks:     []model.Block{p, h(2), h(3), p},
+			boundaries: []int{2},
+			want:       []int{0},
+		},
+		{
+			name:       "boundary within heading run",
+			blocks:     []model.Block{p, h(2), h(3), h(4), p},
+			boundaries: []int{1},
+			want:       []int{0},
+		},
+		{
+			name:       "document starts with heading run",
+			blocks:     []model.Block{h(1), h(2), h(3), p, p},
+			boundaries: []int{2},
+			want:       []int{0},
+		},
+		{
+			name:       "multiple boundaries with heading runs",
+			blocks:     []model.Block{p, h(2), h(3), p, h(2), p},
+			boundaries: []int{2, 4},
+			want:       []int{0, 3},
+		},
+		{
+			name:       "no headings no change",
+			blocks:     []model.Block{p, p, p, p},
+			boundaries: []int{1, 2},
+			want:       []int{1, 2},
+		},
+		{
+			name:       "boundary not touching heading",
+			blocks:     []model.Block{p, p, h(2), p},
+			boundaries: []int{0},
+			want:       []int{0},
+		},
+		{
+			name:       "dedup after snap",
+			blocks:     []model.Block{p, h(2), h(3), p},
+			boundaries: []int{1, 2},
+			want:       []int{0},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := segment.AdjustHeadingBoundaries(tt.blocks, tt.boundaries)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("got %v, want %v", got, tt.want)
+					break
+				}
+			}
+		})
+	}
+}
+
 func TestAutoMaxLines(t *testing.T) {
 	tests := []struct {
 		name       string

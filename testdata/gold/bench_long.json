@@ -3,8 +3,8 @@
   "unit": "block",
   "boundaries": [6, 12, 18],
   "params": {
-    "eval_stage": "raw",
-    "tolerance": 1
+    "eval_stage": "final",
+    "tolerance": 0
   },
   "notes": {
     "description": "25 blocks: recommendation engine RFC with 4 major sections. H1 intro is grouped with the first section.",
