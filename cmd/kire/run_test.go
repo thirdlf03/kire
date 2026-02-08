@@ -17,9 +17,9 @@ func resetFlags() {
 	*flForce = false
 	*flDebug = false
 	*flQuiet = false
-	*flReport = false
 	*flNoIndex = false
 	*flAgentMetadata = false
+	*flLLMRefine = false
 	// Reset string flags
 	*flOutDir = "docs"
 	*flPrefix = ""
@@ -28,30 +28,13 @@ func resetFlags() {
 	*flDagJSON = ""
 	*flDagDOT = ""
 	*flStateFile = ""
-	*flDebugBoundary = ""
-	*flForceBoundary = ""
-	*flParaSplitPattern = ""
 	*flLogFormat = "text"
 	*flContextFormat = "comment"
 	// Reset numeric flags
-	*flMinTokens = 300
-	*flMaxTokens = 3000
-	*flMaxLines = -1
-	*flMinGap = 3
-	*flWindow = 3
 	*flOverlapLines = 0
-	*flSplitCount = 0
-	*flThreshold = -1
 	*flEmbedConcurrency = 4
 	*flBatchSize = 32
 	*flEmbedQPS = 0
-	// Reset negatable flags
-	*flBoundaryHints = true
-	*flSectionLock = true
-	*flLockAfterHeading = true
-	*flSuppressListBoundary = true
-	*flAtomicBoundary = true
-	*flPseudoHeading = true
 	// Reset InPaths
 	*flInPaths = nil
 }
@@ -79,24 +62,6 @@ func TestSplitCSV(t *testing.T) {
 				t.Errorf("splitCSV(%q)[%d] = %q, want %q", tt.input, i, got[i], tt.want[i])
 			}
 		}
-	}
-}
-
-func TestBuildLockConfig(t *testing.T) {
-	cfg := buildLockConfig(true, true)
-	if !cfg.Enabled {
-		t.Error("expected Enabled=true")
-	}
-	if !cfg.LockAfterHeading {
-		t.Error("expected LockAfterHeading=true")
-	}
-
-	cfg2 := buildLockConfig(false, false)
-	if cfg2.Enabled {
-		t.Error("expected Enabled=false")
-	}
-	if cfg2.LockAfterHeading {
-		t.Error("expected LockAfterHeading=false")
 	}
 }
 
@@ -210,14 +175,15 @@ func TestBuildEmbedder_WithConcurrencyAndQPS(t *testing.T) {
 }
 
 func TestRunSplitter_NoInput(t *testing.T) {
-	// Reset global flag state
 	resetFlags()
 	rootCmd.SetArgs([]string{})
 	err := rootCmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for no input")
 	}
-	if !strings.Contains(err.Error(), "input file is required") {
+	// Either "input file is required" or "GEMINI_API_KEY is required"
+	errStr := err.Error()
+	if !strings.Contains(errStr, "input file is required") && !strings.Contains(errStr, "GEMINI_API_KEY") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
@@ -231,473 +197,37 @@ func TestRunSplitter_Version(t *testing.T) {
 	}
 }
 
-func TestRunSplitter_DryRun(t *testing.T) {
-	// Create a temp input file
+func TestRunSplitter_NoAPIKey(t *testing.T) {
 	dir := t.TempDir()
 	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nSome content.\n"), 0644); err != nil {
+	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	outDir := filepath.Join(dir, "output")
 
+	t.Setenv("GEMINI_API_KEY", "")
 	resetFlags()
 	rootCmd.SetArgs([]string{
 		"--dry-run",
-		"--embedder", "mock",
-		"--out", outDir,
-		"--no-boundary-hints",
-		"--no-section-lock",
-		"--no-suppress-list-boundary",
-		"--no-atomic-boundary",
-		"--no-pseudo-heading",
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_DryRunJSON(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nSome content.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--dry-run",
-		"--json",
-		"--embedder", "mock",
 		"--out", outDir,
 		inFile,
 	})
 	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error for missing API key")
 	}
-}
-
-func TestRunSplitter_WriteFiles(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nSome content here.\n\n## Section Two\n\nMore content.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--context-format", "none",
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Check output directory was created
-	if _, err := os.Stat(filepath.Join(outDir, "test")); os.IsNotExist(err) {
-		t.Error("expected output directory to be created")
-	}
-}
-
-func TestRunSplitter_WithPrefix(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--prefix", "part-",
-		"--force",
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_WithJSONL(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--jsonl",
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_WithReport(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--report",
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_WithDAG(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-	dagJSON := filepath.Join(dir, "dag.json")
-	dagDOT := filepath.Join(dir, "dag.dot")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--dag-json", dagJSON,
-		"--dag-dot", dagDOT,
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_WithStateFile(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-	stateFile := filepath.Join(dir, "state.json")
-
-	// First run: creates state file
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--state-file", stateFile,
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("first run error: %v", err)
-	}
-
-	// Second run: should detect no changes
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--state-file", stateFile,
-		inFile,
-	})
-	err = rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("second run error: %v", err)
-	}
-}
-
-func TestRunSplitter_WithAgentMetadata(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--jsonl",
-		"--agent-metadata",
-		"--json",
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_PositionalArgs(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--dry-run",
-		inFile,
-		outDir,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !strings.Contains(err.Error(), "GEMINI_API_KEY") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 
 func TestRunSplitter_NonexistentInput(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "test-key")
 	resetFlags()
 	rootCmd.SetArgs([]string{"/nonexistent/file.md"})
 	err := rootCmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for nonexistent input")
-	}
-}
-
-func TestRunSplitter_NoIndex(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--no-index",
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_MaxLines(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--dry-run",
-		"--max-lines", "50",
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_WithInFlag(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--in", inFile,
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--dry-run",
-		"--json",
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_MultipleInFiles(t *testing.T) {
-	dir := t.TempDir()
-	f1 := filepath.Join(dir, "a.md")
-	f2 := filepath.Join(dir, "b.md")
-	os.WriteFile(f1, []byte("# A\n\nContent A.\n"), 0644)
-	os.WriteFile(f2, []byte("# B\n\nContent B.\n"), 0644)
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--in", f1,
-		"--in", f2,
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--dag-json", filepath.Join(dir, "dag.json"),
-		"--dag-dot", filepath.Join(dir, "dag.dot"),
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_DebugBoundaryFile(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-	debugFile := filepath.Join(dir, "debug.tsv")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--dry-run",
-		"--debug-boundary", debugFile,
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_ThresholdExplicit(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--dry-run",
-		"--threshold", "0.5",
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_SplitCount(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n\n## Section\n\nMore.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--dry-run",
-		"--split-count", "2",
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunSplitter_JSONLCustomPath(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nContent.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-	jsonlPath := filepath.Join(dir, "custom.jsonl")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--jsonl=" + jsonlPath,
-		"--in", inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if _, err := os.Stat(jsonlPath); os.IsNotExist(err) {
-		t.Error("expected custom JSONL file to be created")
-	}
-}
-
-func TestRunSplitter_PseudoHeadingPrefix(t *testing.T) {
-	dir := t.TempDir()
-	inFile := filepath.Join(dir, "test.md")
-	if err := os.WriteFile(inFile, []byte("# Title\n\nStep 1:\nDo something.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outDir := filepath.Join(dir, "output")
-
-	resetFlags()
-	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
-		"--out", outDir,
-		"--force",
-		"--dry-run",
-		"--pseudo-heading-prefix", "^Step",
-		inFile,
-	})
-	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -709,16 +239,18 @@ func TestRunSplitter_ExistingOutputNoForce_NonInteractive(t *testing.T) {
 	}
 	outDir := filepath.Join(dir, "output")
 	// Create the output subdir ahead of time
-	os.MkdirAll(filepath.Join(outDir, "test"), 0755)
+	if err := os.MkdirAll(filepath.Join(outDir, "test"), 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	// Force non-terminal
 	origIsTerminal := isTerminal
 	isTerminal = func() bool { return false }
 	defer func() { isTerminal = origIsTerminal }()
 
+	t.Setenv("GEMINI_API_KEY", "test-key")
 	resetFlags()
 	rootCmd.SetArgs([]string{
-		"--embedder", "mock",
 		"--out", outDir,
 		inFile,
 	})

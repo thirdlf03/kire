@@ -63,7 +63,7 @@ func TestSentenceTransformerEmbedder_HTTPMock_Success(t *testing.T) {
 			"embeddings": [][]float64{{0.1, 0.2, 0.3}, {0.4, 0.5, 0.6}},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -147,7 +147,7 @@ func TestSentenceTransformerEmbedder_HTTPMock_CountMismatch(t *testing.T) {
 			"embeddings": [][]float64{{0.1, 0.2}}, // only 1 embedding for 2 texts
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 

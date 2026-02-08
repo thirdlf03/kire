@@ -32,7 +32,7 @@ func TestOllamaEmbedder_HTTPMock_Success(t *testing.T) {
 			"embeddings": [][]float64{{0.1, 0.2, 0.3}, {0.4, 0.5, 0.6}},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -61,7 +61,7 @@ func TestOllamaEmbedder_HTTPMock_Success(t *testing.T) {
 func TestOllamaEmbedder_HTTPMock_ServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("internal error"))
+		_, _ = w.Write([]byte("internal error"))
 	}))
 	defer server.Close()
 
@@ -82,7 +82,7 @@ func TestOllamaEmbedder_HTTPMock_EmptyEmbeddings(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]any{"embeddings": [][]float64{}}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -105,13 +105,13 @@ func TestOllamaEmbedder_HTTPMock_EmptyText(t *testing.T) {
 		var req struct {
 			Input []string `json:"input"`
 		}
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		receivedTexts = req.Input
 		resp := map[string]any{
 			"embeddings": [][]float64{{0.1, 0.2}},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 

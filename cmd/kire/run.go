@@ -12,15 +12,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thirdlf03/kire/internal/boundary"
 	"github.com/thirdlf03/kire/internal/cache"
 	"github.com/thirdlf03/kire/internal/dag"
 	"github.com/thirdlf03/kire/internal/embedding"
+	"github.com/thirdlf03/kire/internal/llmsplit"
 	"github.com/thirdlf03/kire/internal/output"
-	"github.com/thirdlf03/kire/internal/parser"
 	"github.com/thirdlf03/kire/internal/pipeline"
-	"github.com/thirdlf03/kire/internal/segment"
 	"github.com/thirdlf03/kire/internal/tokenizer"
+	"google.golang.org/genai"
 )
 
 // isTerminal reports whether stdin is a terminal (overridable for testing).
@@ -33,7 +32,6 @@ var isTerminal = func() bool {
 }
 
 func runSplitter(cmd *cobra.Command, args []string) error {
-	resolveNegatables()
 	cfg := populateConfig(cmd)
 	setupLogger(cfg.IO.Quiet, cfg.IO.LogFormat)
 
@@ -58,52 +56,53 @@ func runSplitter(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// Build embedder (shared across all input files)
-	embedder, embedInfo, embedName, closer, err := buildEmbedder(ctx, cfg.Embed.Embedder, cfg.Embed.EmbedModel, cfg.Embed.BatchSize, cfg.Embed.Concurrency, cfg.Embed.QPS, cfg.Embed.CachePath)
+	// Build LLM splitter (always required)
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("GEMINI_API_KEY is required for LLM boundary detection")
+	}
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
 	if err != nil {
-		return fmt.Errorf("build embedder: %w", err)
+		return fmt.Errorf("create LLM client: %w", err)
 	}
-	if closer != nil {
-		defer func() { _ = closer.Close() }()
-	}
+	llmDetector := llmsplit.New(client, llmsplit.Config{
+		Model: cfg.Segment.LLMModel,
+	})
 	if cfg.IO.Debug {
-		log.Printf("Embedder: %s", embedInfo)
+		log.Printf("LLM splitter: model=%s", cfg.Segment.LLMModel)
+	}
+
+	// Build embedder only when --llm-refine is enabled
+	var embedder embedding.Embedder
+	var embedInfo, embedName string
+	var closer io.Closer
+	if cfg.Segment.LLMRefine {
+		var err error
+		embedder, embedInfo, embedName, closer, err = buildEmbedder(ctx, cfg.Embed.Embedder, cfg.Embed.EmbedModel, cfg.Embed.BatchSize, cfg.Embed.Concurrency, cfg.Embed.QPS, cfg.Embed.CachePath)
+		if err != nil {
+			return fmt.Errorf("build embedder: %w", err)
+		}
+		if closer != nil {
+			defer func() { _ = closer.Close() }()
+		}
+		if cfg.IO.Debug {
+			log.Printf("Embedder (for LLM-refine): %s", embedInfo)
+		}
 	}
 
 	// Build token estimator (shared across all input files)
 	estimator := tokenizer.NewLocalEstimator()
 
-	// Threshold
-	var thresholdPtr *float64
-	if cfg.Segment.ThresholdChanged {
-		t := cfg.Segment.Threshold
-		thresholdPtr = &t
-	}
-
-	// Split count
-	var splitCountPtr *int
-	if cfg.Segment.SplitCount > 0 {
-		sc := cfg.Segment.SplitCount
-		splitCountPtr = &sc
-	}
-
-	// Pseudo-heading config (shared across all input files)
-	phCfg := parser.DefaultPseudoHeadingConfig()
-	phCfg.Enabled = cfg.Boundary.PseudoHeading
-	if cfg.Boundary.PseudoHeadingPrefix != "" {
-		phCfg.PrefixPatterns = splitCSV(cfg.Boundary.PseudoHeadingPrefix)
-	}
-
 	opts := ProcessOptions{
-		CLIConfig:        cfg,
-		Embedder:         embedder,
-		EmbedInfo:        embedInfo,
-		EmbedName:        embedName,
-		Estimator:        estimator,
-		PHConfig:         phCfg,
-		ThresholdPtr:     thresholdPtr,
-		SplitCountPtr:    splitCountPtr,
-		MaxTokensChanged: cmd.Flags().Changed("max-tokens"),
+		CLIConfig:   cfg,
+		Embedder:    embedder,
+		EmbedInfo:   embedInfo,
+		EmbedName:   embedName,
+		Estimator:   estimator,
+		LLMDetector: llmDetector,
 	}
 
 	// Warn if --dag-json / --dag-dot specified with multiple files
@@ -166,72 +165,18 @@ func processFile(ctx context.Context, inFile, outDir string, multiFile bool, opt
 		}
 	}
 
-	// Debug boundary writer
-	var debugBoundaryWriter io.Writer
-	var debugBoundaryFile *os.File
-	if cfg.Boundary.DebugBoundary != "" {
-		if cfg.Boundary.DebugBoundary == "-" {
-			debugBoundaryWriter = os.Stdout
-		} else {
-			f, err := os.Create(cfg.Boundary.DebugBoundary)
-			if err != nil {
-				return fmt.Errorf("create debug boundary file: %w", err)
-			}
-			debugBoundaryFile = f
-			debugBoundaryWriter = f
-		}
-	}
-	if debugBoundaryFile != nil {
-		defer func() { _ = debugBoundaryFile.Close() }()
-	}
-
-	// Determine effective MaxTokens: if --max-lines is active (auto or explicit)
-	// and --max-tokens was not explicitly changed by the user, disable token-based
-	// limit so that line-based control takes precedence.
-	effectiveMaxTokens := cfg.Segment.MaxTokens
-	if cfg.Segment.MaxLines != 0 && !opts.MaxTokensChanged {
-		effectiveMaxTokens = 0
-	}
-
-	// Beta pointer (nil = auto)
-	var betaPtr *float64
-	if cfg.Segment.BetaChanged {
-		b := cfg.Segment.Beta
-		betaPtr = &b
-	}
-
 	// Run pipeline
 	pipeCfg := pipeline.Config{
-		Source:                   source,
-		SourceName:               filepath.Base(inFile),
-		Embedder:                 opts.Embedder,
-		TokenEstimator:           opts.Estimator,
-		MinTokens:                cfg.Segment.MinTokens,
-		MaxTokens:                effectiveMaxTokens,
-		MaxLines:                 cfg.Segment.MaxLines,
-		Window:                   cfg.Segment.Window,
-		BlockK:                   cfg.Segment.BlockK,
-		BlockKAuto:               cfg.Segment.BlockKAuto,
-		Threshold:                opts.ThresholdPtr,
-		MinGap:                   cfg.Segment.MinGap,
-		OverlapLines:             cfg.Segment.OverlapLines,
-		ContextFormat:            cfg.Segment.ContextFormat,
-		ContextMaxDepth:          cfg.Segment.ContextMaxDepth,
-		EmbedTaskType:            "SEMANTIC_SIMILARITY",
-		ContextExcludePatterns:   opts.PHConfig.ExcludePatterns,
-		PseudoHeading:            opts.PHConfig,
-		DebugBoundaryWriter:      debugBoundaryWriter,
-		EnableBoundaryHints:      cfg.Boundary.BoundaryHints,
-		SectionLock:              buildLockConfig(cfg.Boundary.SectionLock, cfg.Boundary.LockAfterHeading),
-		ParaSplitPatterns:        splitCSV(cfg.Boundary.ParaSplitPattern),
-		ForceEnforcePatterns:     splitCSV(cfg.Boundary.ForceBoundary),
-		SuppressListBoundary:     cfg.Boundary.SuppressListBoundary,
-		AtomicBoundaryProtection: cfg.Boundary.AtomicBoundary,
-		SplitCount:               opts.SplitCountPtr,
-		PackHeadingBarrier:       cfg.Segment.PackHeadingBarrier,
-		BoundaryMethod:           cfg.Segment.BoundaryMethod,
-		Beta:                     betaPtr,
-		BetaStrategy:             cfg.Segment.BetaStrategy,
+		Source:           source,
+		SourceName:       filepath.Base(inFile),
+		Embedder:         opts.Embedder,
+		TokenEstimator:   opts.Estimator,
+		BoundaryDetector: opts.LLMDetector,
+		LLMRefine:        cfg.Segment.LLMRefine,
+		OverlapLines:     cfg.Segment.OverlapLines,
+		ContextFormat:    cfg.Segment.ContextFormat,
+		ContextMaxDepth:  cfg.Segment.ContextMaxDepth,
+		EmbedTaskType:    "SEMANTIC_SIMILARITY",
 	}
 
 	result, err := pipeline.Run(ctx, pipeCfg)
@@ -268,13 +213,6 @@ func processFile(ctx context.Context, inFile, outDir string, multiFile bool, opt
 		}
 	} else {
 		filenames = output.GenerateFilenames(result.Segments, source)
-	}
-
-	// HTML report output (works in both normal and dry-run mode)
-	if cfg.Output.Report {
-		if err := writeHTMLReport(inFile, fileOutDir, result, source); err != nil {
-			return fmt.Errorf("write HTML report (%s): %w", inFile, err)
-		}
 	}
 
 	// JSONL output (works in both normal and dry-run mode)
@@ -351,31 +289,6 @@ func processFile(ctx context.Context, inFile, outDir string, multiFile bool, opt
 		}
 	}
 
-	return nil
-}
-
-func writeHTMLReport(inputPath, outDir string, result *pipeline.Result, source []byte) error {
-	if err := os.MkdirAll(outDir, 0755); err != nil {
-		return fmt.Errorf("create output dir: %w", err)
-	}
-	reportPath := filepath.Join(outDir, "report.html")
-	f, err := os.Create(reportPath)
-	if err != nil {
-		return fmt.Errorf("create report file: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-
-	cfg := boundary.ReportConfig{
-		Blocks:    result.Blocks,
-		Result:    result.Boundary,
-		Segments:  result.Segments,
-		InputName: filepath.Base(inputPath),
-		Source:    source,
-	}
-	if err := boundary.WriteHTMLReport(f, cfg); err != nil {
-		return err
-	}
-	log.Printf("Wrote HTML report to %s", reportPath)
 	return nil
 }
 
@@ -512,11 +425,4 @@ func splitCSV(s string) []string {
 		}
 	}
 	return result
-}
-
-func buildLockConfig(enabled, lockAfterHeading bool) segment.LockConfig {
-	cfg := segment.DefaultLockConfig()
-	cfg.Enabled = enabled
-	cfg.LockAfterHeading = lockAfterHeading
-	return cfg
 }

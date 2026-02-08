@@ -184,69 +184,6 @@ func TestOptimize_EmptyBlocks(t *testing.T) {
 	}
 }
 
-func TestOptimize_LockRangesPreventSplit(t *testing.T) {
-	// 6 blocks of 200 tokens each = 1200 total, max = 800
-	// Without lock, would split. With lock on [0,5), only gap 4 is available.
-	blocks := makeBlocks(6, 200)
-	br := boundary.BoundaryResult{
-		Boundaries:  nil,
-		DepthScores: make([]float64, 5),
-	}
-	for i := range br.DepthScores {
-		br.DepthScores[i] = float64(i) * 0.1
-	}
-
-	config := segment.OptConfig{
-		MinTokens: 200,
-		MaxTokens: 800,
-		LockRanges: []segment.LockRange{
-			{Start: 0, End: 5}, // Lock blocks 0-4 together
-		},
-	}
-
-	segments := segment.Optimize(blocks, br, config)
-
-	// The locked range (blocks 0-4, 1000 tokens) exceeds max but lock takes priority.
-	// block 5 (200 tokens) is separate.
-	if len(segments) < 1 {
-		t.Fatal("expected at least 1 segment")
-	}
-	// First segment should contain the locked blocks (no split within 0-4)
-	firstSegBlocks := segments[0].TokenCount
-	if firstSegBlocks < 1000 {
-		t.Errorf("expected first segment to have >= 1000 tokens (locked), got %d", firstSegBlocks)
-	}
-}
-
-func TestOptimize_LockRangesEmptyNoEffect(t *testing.T) {
-	// No lock ranges → same as normal behavior
-	blocks := makeBlocks(10, 200)
-	br := boundary.BoundaryResult{
-		Boundaries:  nil,
-		DepthScores: make([]float64, 9),
-	}
-	for i := range br.DepthScores {
-		br.DepthScores[i] = float64(i) * 0.1
-	}
-
-	configNoLock := segment.OptConfig{
-		MinTokens: 400,
-		MaxTokens: 800,
-	}
-	configEmptyLock := segment.OptConfig{
-		MinTokens:  400,
-		MaxTokens:  800,
-		LockRanges: nil,
-	}
-
-	segsNoLock := segment.Optimize(blocks, br, configNoLock)
-	segsEmptyLock := segment.Optimize(blocks, br, configEmptyLock)
-
-	if len(segsNoLock) != len(segsEmptyLock) {
-		t.Errorf("nil lock vs empty lock: segment count %d vs %d", len(segsNoLock), len(segsEmptyLock))
-	}
-}
-
 func TestPackSegments_Basic(t *testing.T) {
 	// 5 small segments (each 10 lines), maxLines=30 → should merge into 2 segments
 	blocks := makeBlocksWithLines(5, 100, 10)

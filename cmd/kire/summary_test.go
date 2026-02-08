@@ -16,14 +16,9 @@ func testCLIConfig() CLIConfig {
 			DryRun: false,
 		},
 		Segment: SegmentConfig{
-			MinTokens:     300,
-			MaxTokens:     3000,
-			Window:        3,
-			Threshold:     -1,
-			MinGap:        3,
 			ContextFormat: "comment",
 			OverlapLines:  0,
-			SplitCount:    0,
+			LLMModel:      "gemini-2.5-flash-lite",
 		},
 		Output: OutputConfig{},
 	}

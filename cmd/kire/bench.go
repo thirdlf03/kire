@@ -9,14 +9,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thirdlf03/kire/internal/boundary"
 	"github.com/thirdlf03/kire/internal/embedding"
 	"github.com/thirdlf03/kire/internal/eval"
+	"github.com/thirdlf03/kire/internal/llmsplit"
 	"github.com/thirdlf03/kire/internal/model"
 	"github.com/thirdlf03/kire/internal/parser"
 	"github.com/thirdlf03/kire/internal/pipeline"
-	"github.com/thirdlf03/kire/internal/segment"
 	"github.com/thirdlf03/kire/internal/tokenizer"
+	"google.golang.org/genai"
 )
 
 var benchCmd = &cobra.Command{
@@ -34,94 +34,36 @@ random-split) for comparison.
 Examples:
   kire bench testdata/gold/simple.json testdata/simple.md
   kire bench --json testdata/gold/bench_long.json testdata/bench_long.md
-  kire bench --embedder tfidf --tolerance 2 gold.json input.md
-  kire bench --profile embedder testdata/gold/bench_long.json testdata/bench_long.md
-  kire bench --profile output testdata/gold/bench_long.json testdata/bench_long.md`,
+  kire bench --llm-refine --embedder gemini testdata/gold/bench_xl.json testdata/bench_xl.md`,
 	Args: cobra.ExactArgs(2),
 	RunE: runBench,
 }
 
 var (
-	flBenchJSON               *bool
-	flBenchProfile            *string
-	flBenchEmbedder           *string
-	flBenchEmbedModel         *string
-	flBenchBatchSize          *int
-	flBenchTolerance          *int
-	flBenchK                  *int
-	flBenchEvalStage          *string
-	flBenchNoBaselines        *bool
-	flBenchAllowBlockMismatch *bool
-	flBenchBaselineMinGap     *bool
-
-	flBenchMinTokens          *int
-	flBenchMaxTokens          *int
-	flBenchMaxLines           *int
-	flBenchWindow             *int
-	flBenchBlockK             *int
-	flBenchBlockKAuto         *bool
-	flBenchThreshold          *float64
-	flBenchMinGap             *int
-	flBenchSplitCount         *int
-	flBenchPackHeadingBarrier *int
-
-	flBenchPseudoHeading        *bool
-	flBenchPseudoHeadingPrefix  *string
-	flBenchBoundaryHints        *bool
-	flBenchSectionLock          *bool
-	flBenchLockAfterHeading     *bool
-	flBenchParaSplitPattern     *string
-	flBenchForceBoundary        *string
-	flBenchSuppressListBoundary *bool
-	flBenchAtomicBoundary       *bool
-	flBenchBoundaryMethod       *string
-	flBenchBeta                 *float64
-	flBenchBetaStrategy         *string
+	flBenchJSON        *bool
+	flBenchEmbedder    *string
+	flBenchEmbedModel  *string
+	flBenchBatchSize   *int
+	flBenchTolerance   *int
+	flBenchK           *int
+	flBenchEvalStage   *string
+	flBenchNoBaselines *bool
+	flBenchLLMModel    *string
+	flBenchLLMRefine   *bool
 )
 
 func init() {
 	f := benchCmd.Flags()
 	flBenchJSON = f.Bool("json", false, "Output JSON report to stdout")
-	flBenchProfile = f.String("profile", "", "Preset for bench parameters: embedder|output")
-	flBenchEmbedder = f.String("embedder", "tfidf", "Embedder provider: "+strings.Join(embedding.List(), "|"))
+	flBenchEmbedder = f.String("embedder", "tfidf", "Embedder provider (for --llm-refine): "+strings.Join(embedding.List(), "|"))
 	flBenchEmbedModel = f.String("embed-model", "", "Embedding model name (provider default if empty)")
 	flBenchBatchSize = f.Int("batch-size", 32, "Batch size for embedding API")
 	flBenchTolerance = f.Int("tolerance", 1, "Boundary matching tolerance (blocks)")
 	flBenchK = f.Int("k", 0, "Pk/WindowDiff window half-width (0 = auto)")
 	flBenchEvalStage = f.String("eval-stage", "final", "Evaluation stage: raw|final|both")
 	flBenchNoBaselines = f.Bool("no-baselines", false, "Skip baseline comparisons")
-	flBenchAllowBlockMismatch = f.Bool("allow-block-mismatch", false, "Allow evaluation even if block count changes after preprocessing")
-	flBenchBaselineMinGap = f.Bool("baseline-min-gap", true, "Apply min-gap constraint to baseline boundaries")
-
-	// Segmentation config (align with CLI defaults)
-	flBenchMinTokens = f.Int("min-tokens", 300, "Minimum tokens per segment")
-	flBenchMaxTokens = f.Int("max-tokens", 3000, "Maximum tokens per segment (0 = unlimited; auto-disabled when --max-lines is active)")
-	flBenchMaxLines = f.Int("max-lines", -1, "Maximum lines per segment (-1 = auto, 0 = unlimited)")
-	flBenchWindow = f.Int("window", 3, "Similarity smoothing window size")
-	flBenchBlockK = f.Int("block-k", 3, "Block comparison window (k embeddings per side, 1=adjacent)")
-	flBenchBlockKAuto = f.Bool("block-k-auto", false, "Automatically select block-k based on document size")
-	flBenchThreshold = f.Float64("threshold", -1, "Boundary depth score threshold (-1 = auto)")
-	flBenchMinGap = f.Int("min-gap", 3, "Minimum gap between boundaries")
-	flBenchSplitCount = f.Int("split-count", 0, "Target number of segments (0 = auto)")
-	flBenchPackHeadingBarrier = f.Int("pack-heading-barrier", 0, "Heading level barrier for segment packing (0=disabled)")
-	flBenchBoundaryMethod = f.String("boundary-method", "texttiling", "Boundary detection method: texttiling|kcpd|hybrid")
-	flBenchBeta = f.Float64("beta", -1, "KCPD penalty parameter (-1 = auto)")
-	flBenchBetaStrategy = f.String("beta-strategy", "auto", "Beta estimation strategy: auto|bic|crossval|theory")
-
-	// Pseudo-heading
-	flBenchPseudoHeading = negatable(benchCmd, "pseudo-heading", true, "Enable pseudo-heading detection")
-	flBenchPseudoHeadingPrefix = f.String("pseudo-heading-prefix", "", "Comma-separated regex patterns for pseudo-heading prefix matching (bypasses MaxRuneLen)")
-
-	// Boundary
-	flBenchBoundaryHints = negatable(benchCmd, "boundary-hints", true, "Enable boundary prohibition/enforcement rules")
-	flBenchParaSplitPattern = f.String("para-split-pattern", "", "Comma-separated regex patterns to split long paragraphs")
-	flBenchForceBoundary = f.String("force-boundary", "", "Comma-separated regex patterns for forced boundary (HintEnforce)")
-	flBenchSuppressListBoundary = negatable(benchCmd, "suppress-list-boundary", true, "Suppress boundaries between consecutive lists and heading→list")
-	flBenchAtomicBoundary = negatable(benchCmd, "atomic-boundary", true, "Prohibit boundaries before code/table/math blocks")
-
-	// Section lock
-	flBenchSectionLock = negatable(benchCmd, "section-lock", true, "Enable section lock (keep lead+body together)")
-	flBenchLockAfterHeading = negatable(benchCmd, "lock-after-heading", true, "Also lock heading+following blocks in section lock")
+	flBenchLLMModel = f.String("llm-model", "gemini-2.5-flash-lite", "LLM model for boundary detection")
+	flBenchLLMRefine = f.Bool("llm-refine", false, "Enable embedding + cosine similarity refinement for LLM boundary detection")
 
 	_ = benchCmd.RegisterFlagCompletionFunc("embedder", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return embedding.List(), cobra.ShellCompDirectiveNoFileComp
@@ -129,20 +71,11 @@ func init() {
 	_ = benchCmd.RegisterFlagCompletionFunc("eval-stage", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"raw", "final", "both"}, cobra.ShellCompDirectiveNoFileComp
 	})
-	_ = benchCmd.RegisterFlagCompletionFunc("profile", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"embedder", "output"}, cobra.ShellCompDirectiveNoFileComp
-	})
-	_ = benchCmd.RegisterFlagCompletionFunc("beta-strategy", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		return []string{"auto", "bic", "crossval", "theory"}, cobra.ShellCompDirectiveNoFileComp
-	})
 
 	rootCmd.AddCommand(benchCmd)
 }
 
 func runBench(cmd *cobra.Command, args []string) error {
-	if err := applyBenchProfile(cmd, *flBenchProfile); err != nil {
-		return err
-	}
 	goldPath := args[0]
 	inputPath := args[1]
 
@@ -154,7 +87,6 @@ func runBench(cmd *cobra.Command, args []string) error {
 	if err := applyGoldParams(cmd, gold.Params); err != nil {
 		return err
 	}
-	resolveNegatables()
 
 	stage, err := parseEvalStage(*flBenchEvalStage)
 	if err != nil {
@@ -175,73 +107,45 @@ func runBench(cmd *cobra.Command, args []string) error {
 
 	ctx := cmd.Context()
 
-	embedder, _, err := embedding.Create(ctx, *flBenchEmbedder, embedding.ProviderConfig{
-		Model:     *flBenchEmbedModel,
-		BatchSize: *flBenchBatchSize,
+	// Build LLM splitter
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("GEMINI_API_KEY is required for LLM boundary detection")
+	}
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  apiKey,
+		Backend: genai.BackendGeminiAPI,
 	})
 	if err != nil {
-		return fmt.Errorf("create embedder %s: %w", *flBenchEmbedder, err)
+		return fmt.Errorf("create LLM client: %w", err)
+	}
+	llmDetector := llmsplit.New(client, llmsplit.Config{
+		Model: *flBenchLLMModel,
+	})
+
+	// Build embedder only when --llm-refine is enabled
+	var embedder embedding.Embedder
+	if *flBenchLLMRefine {
+		var err error
+		embedder, _, err = embedding.Create(ctx, *flBenchEmbedder, embedding.ProviderConfig{
+			Model:     *flBenchEmbedModel,
+			BatchSize: *flBenchBatchSize,
+		})
+		if err != nil {
+			return fmt.Errorf("create embedder %s: %w", *flBenchEmbedder, err)
+		}
 	}
 
 	estimator := tokenizer.NewLocalEstimator()
 
-	phCfg := parser.DefaultPseudoHeadingConfig()
-	phCfg.Enabled = *flBenchPseudoHeading
-	if *flBenchPseudoHeadingPrefix != "" {
-		phCfg.PrefixPatterns = splitCSV(*flBenchPseudoHeadingPrefix)
-	}
-
-	var thresholdPtr *float64
-	if *flBenchThreshold >= 0 {
-		t := *flBenchThreshold
-		thresholdPtr = &t
-	}
-
-	var splitCountPtr *int
-	if *flBenchSplitCount > 0 {
-		sc := *flBenchSplitCount
-		splitCountPtr = &sc
-	}
-
-	// Determine effective MaxTokens if max-lines is active and max-tokens unchanged.
-	effectiveMaxTokens := *flBenchMaxTokens
-	if *flBenchMaxLines != 0 && !cmd.Flags().Changed("max-tokens") {
-		effectiveMaxTokens = 0
-	}
-
-	// Beta pointer for KCPD
-	var benchBetaPtr *float64
-	if *flBenchBeta >= 0 {
-		b := *flBenchBeta
-		benchBetaPtr = &b
-	}
-
 	pipeCfg := pipeline.Config{
-		Source:                   source,
-		SourceName:               filepath.Base(inputPath),
-		Embedder:                 embedder,
-		TokenEstimator:           estimator,
-		MinTokens:                *flBenchMinTokens,
-		MaxTokens:                effectiveMaxTokens,
-		MaxLines:                 *flBenchMaxLines,
-		Window:                   *flBenchWindow,
-		BlockK:                   *flBenchBlockK,
-		BlockKAuto:               *flBenchBlockKAuto,
-		Threshold:                thresholdPtr,
-		MinGap:                   *flBenchMinGap,
-		EmbedTaskType:            "SEMANTIC_SIMILARITY",
-		PseudoHeading:            phCfg,
-		EnableBoundaryHints:      *flBenchBoundaryHints,
-		SectionLock:              buildLockConfig(*flBenchSectionLock, *flBenchLockAfterHeading),
-		ParaSplitPatterns:        splitCSV(*flBenchParaSplitPattern),
-		ForceEnforcePatterns:     splitCSV(*flBenchForceBoundary),
-		SuppressListBoundary:     *flBenchSuppressListBoundary,
-		AtomicBoundaryProtection: *flBenchAtomicBoundary,
-		SplitCount:               splitCountPtr,
-		PackHeadingBarrier:       *flBenchPackHeadingBarrier,
-		BoundaryMethod:           *flBenchBoundaryMethod,
-		Beta:                     benchBetaPtr,
-		BetaStrategy:             *flBenchBetaStrategy,
+		Source:           source,
+		SourceName:       filepath.Base(inputPath),
+		Embedder:         embedder,
+		TokenEstimator:   estimator,
+		BoundaryDetector: llmDetector,
+		LLMRefine:        *flBenchLLMRefine,
+		EmbedTaskType:    "SEMANTIC_SIMILARITY",
 	}
 
 	result, err := pipeline.Run(ctx, pipeCfg)
@@ -252,11 +156,7 @@ func runBench(cmd *cobra.Command, args []string) error {
 	blocks := result.Blocks
 	numBlocks := len(blocks)
 	if len(baseBlocks) != numBlocks {
-		msg := fmt.Sprintf("block count changed after preprocessing: parse=%d pipeline=%d (gold boundaries may no longer align)", len(baseBlocks), numBlocks)
-		if !*flBenchAllowBlockMismatch {
-			return fmt.Errorf("%s; disable pseudo-heading/para-split or use --allow-block-mismatch", msg)
-		}
-		cmd.PrintErrf("WARNING: %s\n", msg)
+		cmd.PrintErrf("WARNING: block count changed after preprocessing: parse=%d pipeline=%d\n", len(baseBlocks), numBlocks)
 	}
 
 	if err := validateGold(gold, numBlocks); err != nil {
@@ -264,7 +164,6 @@ func runBench(cmd *cobra.Command, args []string) error {
 	}
 
 	warnSmallDoc(cmd, numBlocks)
-	warnMinGapCeiling(cmd, gold.Boundaries, *flBenchMinGap)
 	warnAutoK(cmd, gold.Boundaries, numBlocks, *flBenchK)
 
 	report := eval.EvalReport{
@@ -273,13 +172,18 @@ func runBench(cmd *cobra.Command, args []string) error {
 		Gold:      *gold,
 	}
 
-	includeStage := !(stage.raw && !stage.final)
+	includeStage := !stage.raw || stage.final
+
+	benchLabel := "llm"
+	if *flBenchLLMRefine {
+		benchLabel = fmt.Sprintf("llm-refine(%s)", *flBenchEmbedder)
+	}
 
 	if stage.raw {
 		if err := validateBoundaries("kire raw", result.Boundary.Boundaries, numBlocks); err != nil {
 			return err
 		}
-		name := methodName("kire", *flBenchEmbedder, "raw", includeStage)
+		name := methodName("kire", benchLabel, "raw", includeStage)
 		report.Methods = append(report.Methods,
 			eval.Evaluate(gold, numBlocks, result.Boundary.Boundaries, name, *flBenchK, *flBenchTolerance),
 		)
@@ -293,7 +197,7 @@ func runBench(cmd *cobra.Command, args []string) error {
 		if err := validateBoundaries("kire final", finalBoundaries, numBlocks); err != nil {
 			return err
 		}
-		name := methodName("kire", *flBenchEmbedder, "final", includeStage)
+		name := methodName("kire", benchLabel, "final", includeStage)
 		report.Methods = append(report.Methods,
 			eval.Evaluate(gold, numBlocks, finalBoundaries, name, *flBenchK, *flBenchTolerance),
 		)
@@ -309,12 +213,6 @@ func runBench(cmd *cobra.Command, args []string) error {
 		}
 		fixedBoundaries := eval.FixedSplit(numBlocks, avgGoldSegLen)
 		randomBoundaries := eval.RandomSplit(numBlocks, len(gold.Boundaries), 42)
-
-		if *flBenchBaselineMinGap {
-			headingBoundaries = applyMinGap(headingBoundaries, *flBenchMinGap)
-			fixedBoundaries = applyMinGap(fixedBoundaries, *flBenchMinGap)
-			randomBoundaries = applyMinGap(randomBoundaries, *flBenchMinGap)
-		}
 
 		if stage.raw {
 			if err := validateBoundaries("heading-split", headingBoundaries, numBlocks); err != nil {
@@ -337,58 +235,24 @@ func runBench(cmd *cobra.Command, args []string) error {
 		}
 
 		if stage.final {
-			depthScores := result.Boundary.DepthScores
-			if len(depthScores) != numBlocks-1 {
-				depthScores = computeDepthScores(result.Embeddings, *flBenchWindow, *flBenchBlockK)
-			}
-
-			effectiveMaxLines := *flBenchMaxLines
-			if effectiveMaxLines < 0 {
-				totalLines := 0
-				for _, b := range blocks {
-					totalLines += b.LinesApprox
-				}
-				effectiveMaxLines = segment.AutoMaxLines(totalLines)
-			}
-
-			lockRanges := computeLockRanges(blocks, *flBenchSectionLock, *flBenchLockAfterHeading, *flBenchAtomicBoundary)
-			optCfg := segment.OptConfig{
-				MinTokens:          *flBenchMinTokens,
-				MaxTokens:          effectiveMaxTokens,
-				MaxLines:           effectiveMaxLines,
-				LockRanges:         lockRanges,
-				PackHeadingBarrier: *flBenchPackHeadingBarrier,
-			}
-
-			headingFinal, err := optimizeBoundaries(blocks, depthScores, headingBoundaries, optCfg)
-			if err != nil {
-				return fmt.Errorf("heading-split final: %w", err)
-			}
-			if err := validateBoundaries("heading-split final", headingFinal, numBlocks); err != nil {
+			// For baselines, raw=final since there's no optimizer step
+			if err := validateBoundaries("heading-split final", headingBoundaries, numBlocks); err != nil {
 				return err
 			}
 			report.Methods = append(report.Methods,
-				eval.Evaluate(gold, numBlocks, headingFinal, methodName("heading-split", "", "final", includeStage), *flBenchK, *flBenchTolerance))
+				eval.Evaluate(gold, numBlocks, headingBoundaries, methodName("heading-split", "", "final", includeStage), *flBenchK, *flBenchTolerance))
 
-			fixedFinal, err := optimizeBoundaries(blocks, depthScores, fixedBoundaries, optCfg)
-			if err != nil {
-				return fmt.Errorf("fixed-split final: %w", err)
-			}
-			if err := validateBoundaries("fixed-split final", fixedFinal, numBlocks); err != nil {
+			if err := validateBoundaries("fixed-split final", fixedBoundaries, numBlocks); err != nil {
 				return err
 			}
 			report.Methods = append(report.Methods,
-				eval.Evaluate(gold, numBlocks, fixedFinal, methodName(fmt.Sprintf("fixed-%d", avgGoldSegLen), "", "final", includeStage), *flBenchK, *flBenchTolerance))
+				eval.Evaluate(gold, numBlocks, fixedBoundaries, methodName(fmt.Sprintf("fixed-%d", avgGoldSegLen), "", "final", includeStage), *flBenchK, *flBenchTolerance))
 
-			randomFinal, err := optimizeBoundaries(blocks, depthScores, randomBoundaries, optCfg)
-			if err != nil {
-				return fmt.Errorf("random-split final: %w", err)
-			}
-			if err := validateBoundaries("random-split final", randomFinal, numBlocks); err != nil {
+			if err := validateBoundaries("random-split final", randomBoundaries, numBlocks); err != nil {
 				return err
 			}
 			report.Methods = append(report.Methods,
-				eval.Evaluate(gold, numBlocks, randomFinal, methodName(fmt.Sprintf("random (n=%d)", len(gold.Boundaries)), "", "final", includeStage), *flBenchK, *flBenchTolerance))
+				eval.Evaluate(gold, numBlocks, randomBoundaries, methodName(fmt.Sprintf("random (n=%d)", len(gold.Boundaries)), "", "final", includeStage), *flBenchK, *flBenchTolerance))
 		}
 	}
 
@@ -434,70 +298,6 @@ func methodName(base, embedder, stage string, includeStage bool) string {
 	return base
 }
 
-func applyBenchProfile(cmd *cobra.Command, profile string) error {
-	if profile == "" {
-		return nil
-	}
-	switch strings.ToLower(profile) {
-	case "embedder":
-		return applyEmbedderProfile(cmd)
-	case "output":
-		return applyOutputProfile(cmd)
-	default:
-		return fmt.Errorf("invalid profile %q (expected embedder|output)", profile)
-	}
-}
-
-func applyEmbedderProfile(cmd *cobra.Command) error {
-	if err := setIfNotChanged(cmd, "eval-stage", "raw"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "tolerance", "0"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "min-gap", "2"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "window", "5"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "k", "3"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "boundary-hints", "false"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "section-lock", "false"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "suppress-list-boundary", "false"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "atomic-boundary", "false"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "pseudo-heading", "false"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "baseline-min-gap", "false"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "block-k", "3"); err != nil {
-		return err
-	}
-	return nil
-}
-
-func applyOutputProfile(cmd *cobra.Command) error {
-	if err := setIfNotChanged(cmd, "eval-stage", "final"); err != nil {
-		return err
-	}
-	if err := setIfNotChanged(cmd, "max-tokens", "800"); err != nil {
-		return err
-	}
-	return nil
-}
-
 func applyGoldParams(cmd *cobra.Command, params *eval.GoldParams) error {
 	if params == nil {
 		return nil
@@ -517,120 +317,14 @@ func applyGoldParams(cmd *cobra.Command, params *eval.GoldParams) error {
 			return err
 		}
 	}
-	if params.MinGap != nil {
-		if err := setIfNotChanged(cmd, "min-gap", fmt.Sprintf("%d", *params.MinGap)); err != nil {
-			return err
-		}
-	}
-	if params.MinTokens != nil {
-		if err := setIfNotChanged(cmd, "min-tokens", fmt.Sprintf("%d", *params.MinTokens)); err != nil {
-			return err
-		}
-	}
-	if params.MaxTokens != nil {
-		if err := setIfNotChanged(cmd, "max-tokens", fmt.Sprintf("%d", *params.MaxTokens)); err != nil {
-			return err
-		}
-	}
-	if params.MaxLines != nil {
-		if err := setIfNotChanged(cmd, "max-lines", fmt.Sprintf("%d", *params.MaxLines)); err != nil {
-			return err
-		}
-	}
-	if params.Window != nil {
-		if err := setIfNotChanged(cmd, "window", fmt.Sprintf("%d", *params.Window)); err != nil {
-			return err
-		}
-	}
-	if params.BlockK != nil {
-		if err := setIfNotChanged(cmd, "block-k", fmt.Sprintf("%d", *params.BlockK)); err != nil {
-			return err
-		}
-	}
-	if params.Threshold != nil {
-		if err := setIfNotChanged(cmd, "threshold", fmt.Sprintf("%f", *params.Threshold)); err != nil {
-			return err
-		}
-	}
-	if params.SplitCount != nil {
-		if err := setIfNotChanged(cmd, "split-count", fmt.Sprintf("%d", *params.SplitCount)); err != nil {
-			return err
-		}
-	}
-	if params.PackHeadingBarrier != nil {
-		if err := setIfNotChanged(cmd, "pack-heading-barrier", fmt.Sprintf("%d", *params.PackHeadingBarrier)); err != nil {
-			return err
-		}
-	}
-	if params.PseudoHeading != nil {
-		if err := setIfNotChanged(cmd, "pseudo-heading", fmt.Sprintf("%t", *params.PseudoHeading)); err != nil {
-			return err
-		}
-	}
-	if params.BoundaryHints != nil {
-		if err := setIfNotChanged(cmd, "boundary-hints", fmt.Sprintf("%t", *params.BoundaryHints)); err != nil {
-			return err
-		}
-	}
-	if params.SectionLock != nil {
-		if err := setIfNotChanged(cmd, "section-lock", fmt.Sprintf("%t", *params.SectionLock)); err != nil {
-			return err
-		}
-	}
-	if params.LockAfterHeading != nil {
-		if err := setIfNotChanged(cmd, "lock-after-heading", fmt.Sprintf("%t", *params.LockAfterHeading)); err != nil {
-			return err
-		}
-	}
-	if params.ParaSplitPattern != nil {
-		if err := setIfNotChanged(cmd, "para-split-pattern", *params.ParaSplitPattern); err != nil {
-			return err
-		}
-	}
-	if params.ForceBoundary != nil {
-		if err := setIfNotChanged(cmd, "force-boundary", *params.ForceBoundary); err != nil {
-			return err
-		}
-	}
-	if params.SuppressListBoundary != nil {
-		if err := setIfNotChanged(cmd, "suppress-list-boundary", fmt.Sprintf("%t", *params.SuppressListBoundary)); err != nil {
-			return err
-		}
-	}
-	if params.AtomicBoundary != nil {
-		if err := setIfNotChanged(cmd, "atomic-boundary", fmt.Sprintf("%t", *params.AtomicBoundary)); err != nil {
-			return err
-		}
-	}
-	if params.BaselineMinGap != nil {
-		if err := setIfNotChanged(cmd, "baseline-min-gap", fmt.Sprintf("%t", *params.BaselineMinGap)); err != nil {
-			return err
-		}
-	}
-	if params.AllowBlockMismatch != nil {
-		if err := setIfNotChanged(cmd, "allow-block-mismatch", fmt.Sprintf("%t", *params.AllowBlockMismatch)); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
 func setIfNotChanged(cmd *cobra.Command, name, value string) error {
-	if flagChanged(cmd, name) {
+	if cmd.Flags().Changed(name) {
 		return nil
 	}
 	return cmd.Flags().Set(name, value)
-}
-
-func flagChanged(cmd *cobra.Command, name string) bool {
-	if cmd.Flags().Changed(name) {
-		return true
-	}
-	noName := "no-" + name
-	if cmd.Flags().Lookup(noName) != nil && cmd.Flags().Changed(noName) {
-		return true
-	}
-	return false
 }
 
 func validateGold(ann *eval.GoldAnnotation, numBlocks int) error {
@@ -702,53 +396,6 @@ func boundariesFromSegments(segments []model.Segment, blocks []model.Block) ([]i
 	return boundaries, nil
 }
 
-func applyMinGap(boundaries []int, minGap int) []int {
-	if minGap <= 1 || len(boundaries) <= 1 {
-		return boundaries
-	}
-	filtered := make([]int, 0, len(boundaries))
-	last := -minGap
-	for _, b := range boundaries {
-		if len(filtered) == 0 || b-last >= minGap {
-			filtered = append(filtered, b)
-			last = b
-		}
-	}
-	return filtered
-}
-
-func maxBoundariesWithMinGap(boundaries []int, minGap int) int {
-	if minGap <= 1 || len(boundaries) == 0 {
-		return len(boundaries)
-	}
-	count := 0
-	last := -minGap
-	for _, b := range boundaries {
-		if count == 0 || b-last >= minGap {
-			count++
-			last = b
-		}
-	}
-	return count
-}
-
-func warnMinGapCeiling(cmd *cobra.Command, boundaries []int, minGap int) {
-	if minGap <= 1 || len(boundaries) == 0 {
-		return
-	}
-	maxCount := maxBoundariesWithMinGap(boundaries, minGap)
-	if maxCount >= len(boundaries) {
-		return
-	}
-	maxRecall := float64(maxCount) / float64(len(boundaries))
-	maxF1 := 0.0
-	if maxRecall > 0 {
-		maxF1 = 2 * maxRecall / (1 + maxRecall)
-	}
-	cmd.PrintErrf("WARNING: min-gap=%d prevents matching all gold boundaries (%d/%d). Max recall=%.2f, max F1≈%.2f when precision=1.\n",
-		minGap, maxCount, len(boundaries), maxRecall, maxF1)
-}
-
 func warnAutoK(cmd *cobra.Command, boundaries []int, numBlocks, k int) {
 	if numBlocks < 2 || k != 0 {
 		return
@@ -768,39 +415,4 @@ func warnSmallDoc(cmd *cobra.Command, numBlocks int) {
 	if numBlocks > 0 && numBlocks < 50 {
 		cmd.PrintErrf("WARNING: only %d blocks; results may be noisy. Consider longer or multiple documents.\n", numBlocks)
 	}
-}
-
-func computeDepthScores(embeddings []model.Embedding, window, blockK int) []float64 {
-	if len(embeddings) < 2 {
-		return nil
-	}
-	sims := boundary.BlockSimilarities(embeddings, blockK)
-	smoothed := boundary.Smooth(sims, window)
-	return boundary.DepthScore(smoothed)
-}
-
-func computeLockRanges(blocks []model.Block, sectionLock, lockAfterHeading, atomicBoundary bool) []segment.LockRange {
-	var ranges []segment.LockRange
-	if sectionLock {
-		ranges = segment.DetectLockRanges(blocks, buildLockConfig(true, lockAfterHeading))
-	}
-	if atomicBoundary {
-		for i := 1; i < len(blocks); i++ {
-			k := blocks[i].Kind
-			if k == model.BlockCodeBlock || k == model.BlockTable || k == model.BlockMathBlock {
-				gapIdx := i - 1
-				ranges = append(ranges, segment.LockRange{Start: gapIdx, End: gapIdx + 2})
-			}
-		}
-	}
-	return ranges
-}
-
-func optimizeBoundaries(blocks []model.Block, depthScores []float64, boundaries []int, cfg segment.OptConfig) ([]int, error) {
-	br := boundary.BoundaryResult{
-		Boundaries:  boundaries,
-		DepthScores: depthScores,
-	}
-	segments := segment.Optimize(blocks, br, cfg)
-	return boundariesFromSegments(segments, blocks)
 }

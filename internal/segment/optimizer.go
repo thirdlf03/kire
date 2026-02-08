@@ -25,7 +25,6 @@ type OptConfig struct {
 	MinTokens          int
 	MaxTokens          int
 	MaxLines           int
-	LockRanges         []LockRange
 	PackHeadingBarrier int // heading level barrier for packing (0 = disabled)
 }
 
@@ -44,11 +43,8 @@ func Optimize(blocks []model.Block, br boundary.BoundaryResult, config OptConfig
 	// Merge undersized segments
 	segments = mergeUndersized(segments, config.MinTokens)
 
-	// Compute locked gaps from LockRanges
-	locked := LockedGaps(config.LockRanges)
-
 	// Re-split oversized segments
-	segments = splitOversized(segments, config.MaxTokens, config.MaxLines, br.DepthScores, blocks, locked)
+	segments = splitOversized(segments, config.MaxTokens, config.MaxLines, br.DepthScores, blocks)
 
 	// Pack small segments together up to limits
 	segments = packSegments(segments, config.MaxTokens, config.MaxLines, config.PackHeadingBarrier)
@@ -196,7 +192,7 @@ func isOversized(seg model.Segment, maxTokens, maxLines int) bool {
 }
 
 // splitOversized re-splits segments that exceed the maximum token count or line count.
-func splitOversized(segments []model.Segment, maxTokens, maxLines int, depthScores []float64, allBlocks []model.Block, locked map[int]bool) []model.Segment {
+func splitOversized(segments []model.Segment, maxTokens, maxLines int, depthScores []float64, allBlocks []model.Block) []model.Segment {
 	if maxTokens <= 0 && maxLines <= 0 {
 		return segments
 	}
@@ -207,9 +203,8 @@ func splitOversized(segments []model.Segment, maxTokens, maxLines int, depthScor
 			result = append(result, seg)
 			continue
 		}
-		// Find the block offset of this segment's blocks within allBlocks
 		offset := findBlockOffset(seg.Blocks, allBlocks)
-		split := resplit(seg.Blocks, maxTokens, maxLines, depthScores, offset, locked, 0)
+		split := resplit(seg.Blocks, maxTokens, maxLines, depthScores, offset, 0)
 		result = append(result, split...)
 	}
 
@@ -231,21 +226,17 @@ func findBlockOffset(segBlocks []model.Block, allBlocks []model.Block) int {
 const maxResplitDepth = 20
 
 // resplit divides an oversized segment's blocks using depth scores.
-// locked contains global gap indices that must not be used as split points.
 // depth limits recursion to prevent stack overflow.
-func resplit(blocks []model.Block, maxTokens, maxLines int, depthScores []float64, blockOffset int, locked map[int]bool, depth int) []model.Segment {
+func resplit(blocks []model.Block, maxTokens, maxLines int, depthScores []float64, blockOffset int, depth int) []model.Segment {
 	if len(blocks) <= 1 || depth >= maxResplitDepth {
 		return []model.Segment{makeSegment(blocks)}
 	}
 
-	// Find the best internal split point (excluding locked gaps)
+	// Find the best internal split point by highest depth score
 	bestIdx := -1
 	bestScore := -1.0
 	for i := 0; i < len(blocks)-1; i++ {
 		globalIdx := blockOffset + i
-		if locked[globalIdx] {
-			continue // Skip locked gaps
-		}
 		if globalIdx < len(depthScores) {
 			score := depthScores[globalIdx]
 			if score > bestScore {
@@ -256,29 +247,11 @@ func resplit(blocks []model.Block, maxTokens, maxLines int, depthScores []float6
 	}
 
 	if bestIdx < 0 {
-		// No valid split point (all locked or no depth scores).
-		// Try midpoint excluding locked gaps.
-		mid := len(blocks)/2 - 1
-		if mid < 0 {
-			mid = 0
+		// No depth scores available; split at midpoint
+		bestIdx = len(blocks)/2 - 1
+		if bestIdx < 0 {
+			bestIdx = 0
 		}
-		// Search outward from midpoint for an unlocked gap
-		for d := 0; d < len(blocks)-1; d++ {
-			for _, candidate := range []int{mid + d, mid - d} {
-				if candidate >= 0 && candidate < len(blocks)-1 && !locked[blockOffset+candidate] {
-					bestIdx = candidate
-					break
-				}
-			}
-			if bestIdx >= 0 {
-				break
-			}
-		}
-	}
-
-	if bestIdx < 0 {
-		// All gaps are locked; keep as single segment (lock takes priority)
-		return []model.Segment{makeSegment(blocks)}
 	}
 
 	left := blocks[:bestIdx+1]
@@ -287,14 +260,14 @@ func resplit(blocks []model.Block, maxTokens, maxLines int, depthScores []float6
 	var result []model.Segment
 	leftSeg := makeSegment(left)
 	if isOversized(leftSeg, maxTokens, maxLines) && len(left) > 1 {
-		result = append(result, resplit(left, maxTokens, maxLines, depthScores, blockOffset, locked, depth+1)...)
+		result = append(result, resplit(left, maxTokens, maxLines, depthScores, blockOffset, depth+1)...)
 	} else {
 		result = append(result, leftSeg)
 	}
 
 	rightSeg := makeSegment(right)
 	if isOversized(rightSeg, maxTokens, maxLines) && len(right) > 1 {
-		result = append(result, resplit(right, maxTokens, maxLines, depthScores, blockOffset+bestIdx+1, locked, depth+1)...)
+		result = append(result, resplit(right, maxTokens, maxLines, depthScores, blockOffset+bestIdx+1, depth+1)...)
 	} else {
 		result = append(result, rightSeg)
 	}

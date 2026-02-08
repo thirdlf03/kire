@@ -4,17 +4,16 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/thirdlf03/kire/internal/embedding"
-	"github.com/thirdlf03/kire/internal/parser"
+	"github.com/thirdlf03/kire/internal/pipeline"
 	"github.com/thirdlf03/kire/internal/tokenizer"
 )
 
 // CLIConfig collects all flag values into a single structure.
 type CLIConfig struct {
-	IO       IOConfig
-	Segment  SegmentConfig
-	Embed    EmbedConfig
-	Output   OutputConfig
-	Boundary BoundaryConfig
+	IO      IOConfig
+	Segment SegmentConfig
+	Embed   EmbedConfig
+	Output  OutputConfig
 }
 
 // IOConfig holds I/O-related settings.
@@ -32,24 +31,11 @@ type IOConfig struct {
 
 // SegmentConfig holds segmentation parameters.
 type SegmentConfig struct {
-	MinTokens          int
-	MaxTokens          int
-	MaxLines           int
-	Window             int
-	BlockK             int
-	BlockKAuto         bool
-	Threshold          float64
-	ThresholdChanged   bool // true if user explicitly set --threshold >= 0
-	MinGap             int
-	OverlapLines       int
-	ContextFormat      string
-	ContextMaxDepth    int
-	SplitCount         int
-	PackHeadingBarrier int
-	BoundaryMethod     string  // "texttiling" (default), "kcpd", or "hybrid"
-	Beta               float64 // KCPD penalty (-1 = auto)
-	BetaChanged        bool    // true if user explicitly set --beta >= 0
-	BetaStrategy       string  // "auto" (default), "bic", "crossval"
+	OverlapLines    int
+	ContextFormat   string
+	ContextMaxDepth int
+	LLMModel        string
+	LLMRefine       bool
 }
 
 // EmbedConfig holds embedding parameters.
@@ -66,26 +52,11 @@ type EmbedConfig struct {
 type OutputConfig struct {
 	JSON          bool
 	JSONL         string
-	Report        bool
 	AgentMetadata bool
 	NoIndex       bool
 	DagJSON       string
 	DagDOT        string
 	ShowVersion   bool
-}
-
-// BoundaryConfig holds boundary detection settings.
-type BoundaryConfig struct {
-	DebugBoundary        string
-	BoundaryHints        bool
-	ForceBoundary        string
-	SuppressListBoundary bool
-	AtomicBoundary       bool
-	SectionLock          bool
-	LockAfterHeading     bool
-	PseudoHeading        bool
-	PseudoHeadingPrefix  string
-	ParaSplitPattern     string
 }
 
 // ProcessOptions bundles shared objects for processFile.
@@ -95,12 +66,9 @@ type ProcessOptions struct {
 	EmbedInfo string
 	EmbedName string
 	Estimator tokenizer.TokenEstimator
-	PHConfig  parser.PseudoHeadingConfig
 
-	// Derived from CLIConfig
-	ThresholdPtr     *float64
-	SplitCountPtr    *int
-	MaxTokensChanged bool // true if user explicitly set --max-tokens
+	// LLM boundary detector (always non-nil in normal operation)
+	LLMDetector pipeline.BoundaryDetector
 }
 
 // populateConfig reads all cobra flags into a CLIConfig.
@@ -118,24 +86,11 @@ func populateConfig(cmd *cobra.Command) CLIConfig {
 			StateFile: *flStateFile,
 		},
 		Segment: SegmentConfig{
-			MinTokens:          *flMinTokens,
-			MaxTokens:          *flMaxTokens,
-			MaxLines:           *flMaxLines,
-			Window:             *flWindow,
-			BlockK:             *flBlockK,
-			BlockKAuto:         *flBlockKAuto,
-			Threshold:          *flThreshold,
-			ThresholdChanged:   *flThreshold >= 0,
-			MinGap:             *flMinGap,
-			OverlapLines:       *flOverlapLines,
-			ContextFormat:      *flContextFormat,
-			ContextMaxDepth:    *flContextMaxDepth,
-			SplitCount:         *flSplitCount,
-			PackHeadingBarrier: *flPackHeadingBarrier,
-			BoundaryMethod:     *flBoundaryMethod,
-			Beta:               *flBeta,
-			BetaChanged:        *flBeta >= 0,
-			BetaStrategy:       *flBetaStrategy,
+			OverlapLines:    *flOverlapLines,
+			ContextFormat:   *flContextFormat,
+			ContextMaxDepth: *flContextMaxDepth,
+			LLMModel:        *flLLMModel,
+			LLMRefine:       *flLLMRefine,
 		},
 		Embed: EmbedConfig{
 			Embedder:    *flEmbedder,
@@ -148,24 +103,11 @@ func populateConfig(cmd *cobra.Command) CLIConfig {
 		Output: OutputConfig{
 			JSON:          *flJSON,
 			JSONL:         *flJSONL,
-			Report:        *flReport,
 			AgentMetadata: *flAgentMetadata,
 			NoIndex:       *flNoIndex,
 			DagJSON:       *flDagJSON,
 			DagDOT:        *flDagDOT,
 			ShowVersion:   *flShowVersion,
-		},
-		Boundary: BoundaryConfig{
-			DebugBoundary:        *flDebugBoundary,
-			BoundaryHints:        *flBoundaryHints,
-			ForceBoundary:        *flForceBoundary,
-			SuppressListBoundary: *flSuppressListBoundary,
-			AtomicBoundary:       *flAtomicBoundary,
-			SectionLock:          *flSectionLock,
-			LockAfterHeading:     *flLockAfterHeading,
-			PseudoHeading:        *flPseudoHeading,
-			PseudoHeadingPrefix:  *flPseudoHeadingPrefix,
-			ParaSplitPattern:     *flParaSplitPattern,
 		},
 	}
 }

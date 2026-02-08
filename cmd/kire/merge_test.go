@@ -8,10 +8,18 @@ import (
 
 func TestListMDFiles(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.md"), []byte("a"), 0644)
-	os.WriteFile(filepath.Join(dir, "b.md"), []byte("b"), 0644)
-	os.WriteFile(filepath.Join(dir, "index.md"), []byte("idx"), 0644)
-	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("txt"), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("a"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b.md"), []byte("b"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "index.md"), []byte("idx"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("txt"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	files, err := listMDFiles(dir)
 	if err != nil {
@@ -44,9 +52,15 @@ func TestListMDFiles_EmptyDir(t *testing.T) {
 
 func TestCollectDirFiles_WithIndex(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "part1.md"), []byte("p1"), 0644)
-	os.WriteFile(filepath.Join(dir, "part2.md"), []byte("p2"), 0644)
-	os.WriteFile(filepath.Join(dir, "index.md"), []byte("- [part2.md](part2.md)\n- [part1.md](part1.md)\n"), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "part1.md"), []byte("p1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "part2.md"), []byte("p2"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "index.md"), []byte("- [part2.md](part2.md)\n- [part1.md](part1.md)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	files, err := collectDirFiles(dir)
 	if err != nil {
@@ -63,8 +77,12 @@ func TestCollectDirFiles_WithIndex(t *testing.T) {
 
 func TestCollectDirFiles_WithoutIndex(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "b.md"), []byte("b"), 0644)
-	os.WriteFile(filepath.Join(dir, "a.md"), []byte("a"), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "b.md"), []byte("b"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("a"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	files, err := collectDirFiles(dir)
 	if err != nil {
@@ -81,8 +99,12 @@ func TestCollectDirFiles_WithoutIndex(t *testing.T) {
 
 func TestParseIndexOrder_NoLinks(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "part1.md"), []byte("p1"), 0644)
-	os.WriteFile(filepath.Join(dir, "index.md"), []byte("# Index\nNo links here.\n"), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "part1.md"), []byte("p1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "index.md"), []byte("# Index\nNo links here.\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	files, err := parseIndexOrder(dir, filepath.Join(dir, "index.md"))
 	if err != nil {
@@ -96,8 +118,12 @@ func TestParseIndexOrder_NoLinks(t *testing.T) {
 
 func TestRunMerge_Directory(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "01.md"), []byte("# Part 1\n\nContent 1.\n"), 0644)
-	os.WriteFile(filepath.Join(dir, "02.md"), []byte("# Part 2\n\nContent 2.\n"), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "01.md"), []byte("# Part 1\n\nContent 1.\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "02.md"), []byte("# Part 2\n\nContent 2.\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	outFile := filepath.Join(t.TempDir(), "merged.md")
 
@@ -120,8 +146,12 @@ func TestRunMerge_Files(t *testing.T) {
 	dir := t.TempDir()
 	f1 := filepath.Join(dir, "a.md")
 	f2 := filepath.Join(dir, "b.md")
-	os.WriteFile(f1, []byte("Part A.\n"), 0644)
-	os.WriteFile(f2, []byte("Part B.\n"), 0644)
+	if err := os.WriteFile(f1, []byte("Part A.\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f2, []byte("Part B.\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	outFile := filepath.Join(t.TempDir(), "merged.md")
 

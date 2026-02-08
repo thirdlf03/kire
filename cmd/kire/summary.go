@@ -46,17 +46,13 @@ type SummaryQuality struct {
 
 // SummaryConfig captures the pipeline configuration for reproducibility.
 type SummaryConfig struct {
-	MinTokens     int     `json:"min_tokens"`
-	MaxTokens     int     `json:"max_tokens"`
-	Window        int     `json:"window"`
-	Threshold     float64 `json:"threshold"`
-	MinGap        int     `json:"min_gap"`
-	Embedder      string  `json:"embedder"`
-	EmbedderType  string  `json:"embedder_type"`
-	ContextFormat string  `json:"context_format"`
-	OverlapLines  int     `json:"overlap_lines"`
-	SplitCount    int     `json:"split_count"`
-	DryRun        bool    `json:"dry_run"`
+	LLMModel      string `json:"llm_model"`
+	LLMRefine     bool   `json:"llm_refine"`
+	Embedder      string `json:"embedder,omitempty"`
+	EmbedderType  string `json:"embedder_type,omitempty"`
+	ContextFormat string `json:"context_format"`
+	OverlapLines  int    `json:"overlap_lines"`
+	DryRun        bool   `json:"dry_run"`
 }
 
 func buildSummary(inputPath, outputDir string, result *pipeline.Result, filenames []string, source []byte, embedderInfo, embedName string, cfg CLIConfig) Summary {
@@ -83,11 +79,6 @@ func buildSummary(inputPath, outputDir string, result *pipeline.Result, filename
 		totalTokens += seg.TokenCount
 	}
 
-	threshold := float64(-1)
-	if cfg.Segment.ThresholdChanged {
-		threshold = cfg.Segment.Threshold
-	}
-
 	var quality *SummaryQuality
 	if cfg.Output.AgentMetadata {
 		quality = &SummaryQuality{
@@ -109,16 +100,12 @@ func buildSummary(inputPath, outputDir string, result *pipeline.Result, filename
 		TotalTokens:   totalTokens,
 		Quality:       quality,
 		Config: SummaryConfig{
-			MinTokens:     cfg.Segment.MinTokens,
-			MaxTokens:     cfg.Segment.MaxTokens,
-			Window:        cfg.Segment.Window,
-			Threshold:     threshold,
-			MinGap:        cfg.Segment.MinGap,
+			LLMModel:      cfg.Segment.LLMModel,
+			LLMRefine:     cfg.Segment.LLMRefine,
 			Embedder:      embedName,
 			EmbedderType:  embedderInfo,
 			ContextFormat: cfg.Segment.ContextFormat,
 			OverlapLines:  cfg.Segment.OverlapLines,
-			SplitCount:    cfg.Segment.SplitCount,
 			DryRun:        cfg.IO.DryRun,
 		},
 	}

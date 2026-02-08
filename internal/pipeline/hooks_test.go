@@ -6,10 +6,21 @@ import (
 	"testing"
 
 	"github.com/thirdlf03/kire/internal/boundary"
-	"github.com/thirdlf03/kire/internal/embedding"
 	"github.com/thirdlf03/kire/internal/model"
 	"github.com/thirdlf03/kire/internal/tokenizer"
 )
+
+// internalStubDetector is a test-only boundary detector.
+type internalStubDetector struct {
+	boundaries []int
+}
+
+func (s *internalStubDetector) DetectBoundaries(_ context.Context, blocks []model.Block) (boundary.BoundaryResult, error) {
+	return boundary.BoundaryResult{
+		Boundaries:  s.boundaries,
+		DepthScores: make([]float64, max(len(blocks)-1, 0)),
+	}, nil
+}
 
 func TestHooksAreCalledInOrder(t *testing.T) {
 	source := []byte("# Title\n\nParagraph one.\n\n## Section\n\nParagraph two.\n")
@@ -21,13 +32,6 @@ func TestHooksAreCalledInOrder(t *testing.T) {
 			callOrder = append(callOrder, "parse")
 			if len(blocks) == 0 {
 				t.Error("OnParse received empty blocks")
-			}
-			return nil
-		},
-		OnEmbed: func(embeddings []model.Embedding) error {
-			callOrder = append(callOrder, "embed")
-			if len(embeddings) == 0 {
-				t.Error("OnEmbed received empty embeddings")
 			}
 			return nil
 		},
@@ -49,15 +53,12 @@ func TestHooksAreCalledInOrder(t *testing.T) {
 	}
 
 	cfg := Config{
-		Source:         source,
-		SourceName:     "test.md",
-		Embedder:       embedding.NewMockEmbedder(128),
-		TokenEstimator: tokenizer.NewLocalEstimator(),
-		MinTokens:      0,
-		MaxTokens:      10000,
-		Window:         1,
-		MinGap:         1,
-		Hooks:          hooks,
+		Source:           source,
+		SourceName:       "test.md",
+		TokenEstimator:   tokenizer.NewLocalEstimator(),
+		BoundaryDetector: &internalStubDetector{boundaries: []int{2}},
+		Hooks:            hooks,
+		ContextFormat:    "none",
 	}
 
 	_, err := Run(context.Background(), cfg)
@@ -65,21 +66,18 @@ func TestHooksAreCalledInOrder(t *testing.T) {
 		t.Fatalf("Run failed: %v", err)
 	}
 
-	// Verify order
+	// Verify order: parse → boundary → segment → render-*
 	if len(callOrder) < 4 {
 		t.Fatalf("expected at least 4 hook calls, got %d: %v", len(callOrder), callOrder)
 	}
 	if callOrder[0] != "parse" {
 		t.Errorf("expected first call to be 'parse', got %q", callOrder[0])
 	}
-	if callOrder[1] != "embed" {
-		t.Errorf("expected second call to be 'embed', got %q", callOrder[1])
+	if callOrder[1] != "boundary" {
+		t.Errorf("expected second call to be 'boundary', got %q", callOrder[1])
 	}
-	if callOrder[2] != "boundary" {
-		t.Errorf("expected third call to be 'boundary', got %q", callOrder[2])
-	}
-	if callOrder[3] != "segment" {
-		t.Errorf("expected fourth call to be 'segment', got %q", callOrder[3])
+	if callOrder[2] != "segment" {
+		t.Errorf("expected third call to be 'segment', got %q", callOrder[2])
 	}
 }
 
@@ -93,15 +91,12 @@ func TestHookErrorStopsPipeline(t *testing.T) {
 	}
 
 	cfg := Config{
-		Source:         source,
-		SourceName:     "test.md",
-		Embedder:       embedding.NewMockEmbedder(128),
-		TokenEstimator: tokenizer.NewLocalEstimator(),
-		MinTokens:      0,
-		MaxTokens:      10000,
-		Window:         1,
-		MinGap:         1,
-		Hooks:          hooks,
+		Source:           source,
+		SourceName:       "test.md",
+		TokenEstimator:   tokenizer.NewLocalEstimator(),
+		BoundaryDetector: &internalStubDetector{},
+		Hooks:            hooks,
+		ContextFormat:    "none",
 	}
 
 	_, err := Run(context.Background(), cfg)
@@ -117,15 +112,12 @@ func TestNilHooksNoError(t *testing.T) {
 	source := []byte("# Title\n\nParagraph one.\n")
 
 	cfg := Config{
-		Source:         source,
-		SourceName:     "test.md",
-		Embedder:       embedding.NewMockEmbedder(128),
-		TokenEstimator: tokenizer.NewLocalEstimator(),
-		MinTokens:      0,
-		MaxTokens:      10000,
-		Window:         1,
-		MinGap:         1,
-		Hooks:          nil, // no hooks
+		Source:           source,
+		SourceName:       "test.md",
+		TokenEstimator:   tokenizer.NewLocalEstimator(),
+		BoundaryDetector: &internalStubDetector{},
+		Hooks:            nil,
+		ContextFormat:    "none",
 	}
 
 	_, err := Run(context.Background(), cfg)
