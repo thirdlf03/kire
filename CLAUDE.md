@@ -46,7 +46,6 @@ just cover-html       # HTML カバレッジレポート（ブラウザ表示）
 just lint             # go vet ./...
 just run -- <ARGS>    # go run ./cmd/kire <ARGS>
 just clean            # ビルド成果物を削除
-just benchmark        # 各 embedding プロバイダのベンチマーク比較
 just bench            # 品質評価 + パフォーマンスベンチマーク（全部）
 just bench-quality    # Gold standard に対する品質評価のみ
 just bench-perf       # Go testing.B パフォーマンスベンチマークのみ
@@ -55,19 +54,19 @@ just release-dry-run  # GoReleaser スナップショットビルド（publish �
 
 単一パッケージのテスト実行:
 ```bash
-go test ./internal/boundary/...
-go test -run TestDetectBoundaries ./internal/boundary/...
+go test ./internal/llmsplit/...
+go test -run TestDetectBoundaries ./internal/llmsplit/...
 ```
 
 ## プロジェクト概要
 
-kire (切れ) — 長文 Markdown をセマンティック境界で自動分割する Go CLI ツール。Gemini Embedding + TextTiling 風境界検出を使用。
+kire (切れ) — 長文 Markdown を LLM でセマンティック境界を検出して自動分割する Go CLI ツール。Gemini の structured output で境界位置を決定する。
 
 ## アーキテクチャ
 
-モジュール: `github.com/thirdlf03/kire`（Go 1.25.6）
+モジュール: `github.com/thirdlf03/kire`（Go 1.25.5）
 
-パイプライン構成: `Parse → ParaSplit → PseudoHeading → Tokenize → Embed → Boundary → Lock → Segment → Render → Output`
+パイプライン構成: `Parse → Tokenize → LineEstimate → [LLM-Refine? Embed+Sims : noop] → LLM Boundary → Optimize → IDs → Quality → Render → Output`
 
 エントリポイントは `cmd/kire/main.go`、パイプライン統合は `internal/pipeline/pipeline.go`。
 
@@ -76,23 +75,26 @@ kire (切れ) — 長文 Markdown をセマンティック境界で自動分割�
 - `model/` — 共有データ型（Block, Segment, Embedding）。全パッケージがこの型を使う
 - `parser/` — goldmark で Markdown → `[]Block`。各ブロックに `SourceRange`（byte offset）と `HeadingPath` を付与
 - `tokenizer/` — `TokenEstimator` インターフェース。local（ヒューリスティック）実装
-- `embedding/` — `Embedder` インターフェース。Gemini/Mock/TF-IDF の基本実装 + Cached/Concurrent のデコレータ
-- `boundary/` — 隣接ブロック間 cosine similarity → smoothing → depth score → 閾値選定で境界検出
-- `segment/` — Greedy 最適化: 見出し調整 → 境界分割 → undersized 結合 → oversized 再分割
+- `llmsplit/` — LLM 境界検出。Gemini `GenerateContent` + `ResponseSchema` で structured output。`{"boundaries": [4, 10, 15]}` 形式の gap index 配列を返す
+- `embedding/` — `Embedder` インターフェース。Gemini/OpenAI/Ollama/SentenceTransformer/TF-IDF/Mock の実装 + Cached/Concurrent デコレータ。`--llm-refine` 時のみ使用
+- `boundary/` — `BoundaryResult` 構造体 + cosine similarity 計算ユーティリティ（MeanPool, BlockSimilarities, Smooth, DepthScore）
+- `segment/` — Optimize（空コンフィグで LLM 境界をそのまま使用）、ID 生成、品質スコア計算
 - `ctxheader/` — 親見出しをセグメント先頭に挿入（comment/front-matter/heading/none）
 - `output/` — `SourceRange` ベースの原文復元 + overlap 付与 + セマンティックファイル名生成（slug.go）+ ファイル書き出し
 - `vecmath/` — cosine similarity 計算
 - `cache/` — SHA256 キーの JSON 永続キャッシュ
 - `dag/` — セグメント間アンカー/リンク参照から依存グラフを構築、JSON/DOT/Markdown エクスポート
 - `concurrency/` — セマフォ + `x/time/rate` によるワーカープール
-- `pipeline/` — 上記すべてをオーケストレーション
+- `pipeline/` — 上記すべてをオーケストレーション。`BoundaryDetector` インターフェースと `SimilaritySetter` オプショナルインターフェースで LLM 境界検出を抽象化
+- `eval/` — ベンチマーク評価（Pk, WindowDiff, Precision/Recall/F1）
 
 ### 重要な設計パターン
 
+- **BoundaryDetector インターフェース**: `pipeline.BoundaryDetector` で LLM 境界検出を抽象化。テストでは stubBoundaryDetector でモック
+- **SimilaritySetter**: `--llm-refine` 時に cosine similarity データを渡すオプショナルインターフェース
 - **デコレータパターン**: Embedder は `Base(Gemini/Mock/TFIDF) → CachedEmbedder → ConcurrentEmbedder` のように合成する
 - **Lossless 復元**: `SourceRange`（byte offset）で原文をバイトレベルで復元。分割結果を結合すると原文と一致する
 - **見出し追跡**: Parser が `HeadingPath` を維持し、Segment → Context → Output まで伝播する
-- **フォールバック戦略**: Gemini API 不可時は TF-IDF へ自動切替（`cmd/kire/run.go` の `buildEmbedder()`）
 - **レジストリパターン**: Embedding プロバイダは `embedding.Register()` で登録。`--embedder auto` は gemini → tfidf の順で試行
 
 ### マルチエージェント連携機能
@@ -114,29 +116,41 @@ kire (切れ) — 長文 Markdown をセマンティック境界で自動分割�
 
 `spf13/cobra` を使用。フラグ定義は `cmd/kire/root.go` の `init()` にまとまっている。
 `NoOptDefVal` を使ったオプショナル値フラグ（例: `--jsonl` は値なしで `"auto"`、`--jsonl=-` で stdout）がある。
-negatable フラグ（`--no-section-lock` 等）は `negatable()` ヘルパーで定義。
+
+### LLM 分割の仕組み
+
+`internal/llmsplit/` パッケージが Gemini API を使って境界検出する:
+
+- `Splitter` 構造体が `pipeline.BoundaryDetector` と `pipeline.SimilaritySetter` を実装
+- `DetectBoundaries()` でブロック一覧をプロンプトとして送信し、structured output で gap index 配列を取得
+- Temperature=0 で決定論的な出力
+- `--llm-refine` 時は `SetSimilarities()` で cosine similarity データを受け取り、プロンプトに含める
+- 出力された境界はバリデーション・重複排除・ソートされる
+- Confidence は全境界で 1.0（LLM は確信度を返さないため）
 
 ## 依存パッケージ
 
+- `google.golang.org/genai` — Gemini API クライアント（LLM 境界検出、必須）
 - `github.com/yuin/goldmark` — Markdown パース
 - `github.com/litao91/goldmark-mathjax` — 数式ブロックサポート
 - `github.com/spf13/cobra` — CLI フレームワーク（サブコマンド + シェル補完）
-- `google.golang.org/genai` — Gemini Embedding API
-- `github.com/openai/openai-go/v3` — OpenAI Embedding API
+- `github.com/openai/openai-go/v3` — OpenAI Embedding API（`--llm-refine --embedder openai` 時）
 - `golang.org/x/time/rate` — レート制限
 
 テストフレームワークは標準の `testing` パッケージのみ使用。テーブル駆動テストが主パターン。
 
 ## テスト
 
-- `embedding.NewMockEmbedder()` で API 不要のテストが可能（文字頻度ベースの決定論的ベクトル）
-- Gemini API を使う統合テストは `GEMINI_API_KEY` 未設定時に `t.Skip()` でスキップされる
+- `go test ./...` で全テスト実行
+- LLM 統合テストは `GEMINI_API_KEY` 未設定時に `t.Skip()` でスキップされる
+- pipeline テストは `stubBoundaryDetector` で LLM をモック
+- `embedding.NewMockEmbedder()` で API 不要の embedding テストが可能（文字頻度ベースの決定論的ベクトル）
 - Embedding プロバイダはレジストリパターン（`embedding/registry.go`）。新プロバイダ追加時は `init()` で `Register()` を呼ぶ
 
 ## 環境変数
 
-- `GEMINI_API_KEY` — Gemini Embedding API キー。未設定でも TF-IDF/Mock embedder で動作する
-- `OPENAI_API_KEY` — OpenAI Embedding API キー（`--embedder openai` 使用時）
+- `GEMINI_API_KEY` — Gemini API キー。LLM 境界検出に必須
+- `OPENAI_API_KEY` — OpenAI Embedding API キー（`--llm-refine --embedder openai` 使用時）
 - `OLLAMA_HOST` — Ollama サーバーアドレス（デフォルト: `http://localhost:11434`）
 - `SENTENCETRANSFORMER_HOST` — SentenceTransformer HTTP サーバーアドレス（デフォルト: `http://localhost:8080`）
 
@@ -154,17 +168,8 @@ negatable フラグ（`--no-section-lock` 等）は `negatable()` ヘルパー�
 
 `kire bench` は `--eval-stage` で評価対象を切り替える。
 
-- raw — 境界検出ステージの出力をそのまま評価する。embedder の境界検出力を比較するのに使う。optimizer の merge/pack/heading 調整が介入しないため、純粋な埋め込み品質の差が見える。
-- final — optimizer 後の最終セグメント境界を評価する。実際の出力品質を見るのに使う。raw で弱い embedder でも optimizer の補正で結果が改善されることがあり、raw と順位が逆転するのは正常な挙動。
-
-目的に応じてパラメータを変える必要がある。raw では制約（section lock, boundary hints 等）を外して embedder 差を見やすくし、final では実運用に近い制約を有効にする。
-
-### プロファイル
-
-`--profile` で目的別のプリセットを適用できる。明示フラグ > profile > gold params の優先順位で、明示指定されたフラグは上書きされない。
-
-- `--profile embedder` — raw の境界検出力を比較する設定。eval-stage=raw, tolerance=0, min-gap=2, window=5, k=3, 各種制約オフ。
-- `--profile output` — final の出力品質を比較する設定。eval-stage=final, max-tokens=800。
+- raw — LLM 境界検出の出力をそのまま評価する
+- final — optimizer 後の最終セグメント境界を評価する（現在 optimizer は空コンフィグなので raw と同じ境界になることが多い）
 
 ### 実行方法
 
@@ -172,15 +177,8 @@ negatable フラグ（`--no-section-lock` 等）は `negatable()` ヘルパー�
 # 基本（gold params が自動適用される）
 kire bench testdata/gold/bench_xl.json testdata/bench_xl.md
 
-# embedder 比較（raw, 制約なし）
-kire bench --profile embedder --embedder gemini testdata/gold/bench_xl.json testdata/bench_xl.md
-
-# bench_xl で embedder 比較するときは --split-count 19 を推奨（過分割防止）
-kire bench --profile embedder --split-count 19 --embedder gemini \
-  testdata/gold/bench_xl.json testdata/bench_xl.md
-
-# 出力品質比較（final, max-tokens=800）
-kire bench --profile output --embedder gemini testdata/gold/bench_xl.json testdata/bench_xl.md
+# LLM-refine モードで評価
+kire bench --llm-refine --embedder gemini testdata/gold/bench_xl.json testdata/bench_xl.md
 
 # raw と final を同時に表示
 kire bench --eval-stage both testdata/gold/bench_xl.json testdata/bench_xl.md
@@ -195,26 +193,6 @@ kire bench --no-baselines testdata/gold/bench_xl.json testdata/bench_xl.md
 kire bench --tolerance 0 --k 3 testdata/gold/bench_long.json testdata/bench_long.md
 ```
 
-### 全 embedder 一括比較
-
-```bash
-# embedder 比較（raw）
-for e in tfidf mock ollama gemini openai; do
-  echo "=== $e ==="
-  kire bench --profile embedder --split-count 19 --no-baselines --embedder "$e" \
-    testdata/gold/bench_xl.json testdata/bench_xl.md 2>/dev/null
-  echo ""
-done
-
-# 出力品質（final）
-for e in tfidf mock ollama gemini openai; do
-  echo "=== $e ==="
-  kire bench --profile output --no-baselines --embedder "$e" \
-    testdata/gold/bench_xl.json testdata/bench_xl.md 2>/dev/null
-  echo ""
-done
-```
-
 ### Gold アノテーション
 
 `testdata/gold/` に JSON 形式で配置。`boundaries` はソート済みのブロック間 gap index（0-indexed）。`params` でベンチの推奨パラメータを指定できる（全フィールド省略可）。
@@ -226,16 +204,11 @@ done
   "boundaries": [4, 10, 15, ...],
   "params": {
     "eval_stage": "final",
-    "tolerance": 0,
-    "min_tokens": 200,
-    "max_tokens": 500,
-    "max_lines": 0
+    "tolerance": 0
   },
   "notes": { "boundary_4": "説明..." }
 }
 ```
-
-params は「どの評価モードでも安全に効く設定」を入れる。raw 専用の設定（split-count 等）は params に入れず、コマンド実行時に手動指定する。これは split-count が section lock と干渉して final 評価を劣化させるため。
 
 新しい gold annotation を作成するときは、parser でブロック構造を確認する。
 
@@ -244,14 +217,6 @@ params は「どの評価モードでも安全に効く設定」を入れる。r
 go run ./cmd/dumpblocks testdata/your_file.md
 ```
 
-### テストデータの設計方針
-
-bench_long.md（25 blocks）は語彙が重複する近接トピック（collaborative filtering, content-based, hybrid, online learning, evaluation, A/B testing, monitoring）が同一セクション内で遷移する構造になっている。短文書のためブロック数が少なく、min-gap やその他の制約が結果を支配しやすい。embedder 比較には使えるが、結果はノイジーになりうる。
-
-bench_xl.md（104 blocks）は9セクション × 約10パラグラフの長文で、セクション内の中間地点にトピック遷移を配置した構造。語彙が意図的に重複している（pipeline, latency, throughput, backpressure 等）ため、heading-split では捉えられない境界をセマンティック分割が検出できるかを測定できる。embedder の出力品質評価に適している。
-
-gold boundary はトピック遷移の実際の位置に設定し、見出し位置とは意図的にずらしてある。
-
 ### ベースライン戦略
 
 `kire bench` はデフォルトで 3 つのベースラインを自動実行する。
@@ -259,20 +224,6 @@ gold boundary はトピック遷移の実際の位置に設定し、見出し位
 - heading-split — 全見出しブロックの直前に境界を置く
 - fixed-N — N ブロックごとに均等分割（N は gold の平均セグメント長）
 - random — gold と同数の境界をランダム配置（seed=42 で再現可能）
-
-### パフォーマンスベンチマーク
-
-```bash
-# 全パッケージの Go ベンチマーク
-go test -bench=. -benchmem ./internal/...
-
-# 特定パッケージのみ
-go test -bench=. -benchmem ./internal/eval/...
-go test -bench=. -benchmem ./internal/boundary/...
-go test -bench=. -benchmem ./internal/parser/...
-```
-
-対象: Pk/WindowDiff 計算性能、DetectBoundaries（20/100/500 blocks）、Parse（simple/nested/bench_long）
 
 ### パッケージ構成
 

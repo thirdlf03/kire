@@ -1,0 +1,19 @@
+{
+  "doc_id": "evil_tasks_spec",
+  "unit": "block",
+  "boundaries": [41, 63, 91, 109, 131, 146, 183],
+  "params": {
+    "eval_stage": "raw",
+    "tolerance": 1
+  },
+  "notes": {
+    "description": "198 blocks: flat Markdown spec with no headings. Boundaries are at 'additional feature' introductions.",
+    "boundary_41": "Task CRUD ends, Label management begins",
+    "boundary_63": "Label CRUD ends, Project management begins",
+    "boundary_91": "Project endpoints end, Dependencies begins",
+    "boundary_109": "Dependencies ends, Subtasks begins",
+    "boundary_131": "Subtasks ends, Unicode normalization begins",
+    "boundary_146": "Unicode normalization ends, Comments begins",
+    "boundary_183": "Comments ends, Batch operations begins"
+  }
+}

@@ -1,0 +1,179 @@
+{
+  "query": "Current pricing (as of February 2026) for Google Gemini API models: Gemini 2.5 Flash Lite, Gemini 2.5 Flash, and Gemini Embedding API",
+  "timestamp": "2026-02-08T00:00:00Z",
+  "summary": "Google Gemini API pricing in February 2026 ranges from $0.10-$2.50 per million input tokens depending on the model. Gemini 2.5 Flash-Lite is the most affordable at $0.10/$0.40 per 1M tokens (input/output), while Gemini 2.5 Flash costs $0.30/$2.50 per 1M tokens. The Gemini Embedding model (gemini-embedding-001) costs $0.15 per 1M input tokens. Legacy text-embedding-004 was deprecated on January 14, 2026.",
+  "findings": [
+    {
+      "topic": "Gemini 2.5 Flash-Lite Pricing",
+      "key_points": [
+        "Standard API: $0.10 per 1M input tokens (text/image/video), $0.40 per 1M output tokens",
+        "Standard API audio input: $0.30 per 1M tokens",
+        "Batch API: 50% discount - $0.05 per 1M input tokens, $0.20 per 1M output tokens",
+        "Most affordable Gemini 2.5 model available"
+      ],
+      "details": "Gemini 2.5 Flash-Lite is Google's lowest-cost 2.5 model, offering a 1 million-token context window. It supports controllable thinking budgets and includes features like Grounding with Google Search and Code Execution. The batch API provides a 50% cost reduction for asynchronous processing.",
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://www.metacto.com/blogs/the-true-cost-of-google-gemini-a-guide-to-api-pricing-and-integration",
+        "https://pricepertoken.com/pricing-page/model/google-gemini-2.5-flash-lite"
+      ]
+    },
+    {
+      "topic": "Gemini 2.5 Flash Pricing",
+      "key_points": [
+        "Standard API: $0.30 per 1M input tokens (text/image/video), $2.50 per 1M output tokens",
+        "Standard API audio input: $1.00 per 1M tokens",
+        "Batch API: $0.15 per 1M input tokens, $1.25 per 1M output tokens",
+        "3x more expensive than Flash-Lite for input, 6.25x more for output"
+      ],
+      "details": "Gemini 2.5 Flash offers higher performance than Flash-Lite with the same 1M context window. The batch API provides 50% cost savings for non-time-sensitive workloads.",
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://www.aifreeapi.com/en/posts/gemini-api-pricing-2026"
+      ]
+    },
+    {
+      "topic": "Gemini Embedding API Pricing",
+      "key_points": [
+        "Model name: gemini-embedding-001 (current recommended model)",
+        "Standard API: $0.15 per 1M input tokens",
+        "Batch API: $0.075 per 1M input tokens (50% discount)",
+        "No output token costs for embedding models"
+      ],
+      "details": "The Gemini Embedding model is the officially supported embedding solution as of February 2026. It replaced the legacy text-embedding-004 model which was deprecated on January 14, 2026. The model is available through both the Gemini API (ai.google.dev) and Vertex AI, though Vertex AI pricing differs significantly.",
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://developers.googleblog.com/gemini-embedding-available-gemini-api/",
+        "https://ai.google.dev/gemini-api/docs/embeddings"
+      ]
+    },
+    {
+      "topic": "Legacy Embedding Models (text-embedding-004, text-embedding-005)",
+      "key_points": [
+        "text-embedding-004 was deprecated on January 14, 2026",
+        "Migration to gemini-embedding-001 is required",
+        "Vertex AI pricing for text-embedding-004 was $25 per 1M tokens (before deprecation)",
+        "text-embedding-005 status unclear, but gemini-embedding-001 is the recommended path forward"
+      ],
+      "details": "Google deprecated the text-embedding-004 model on January 14, 2026, replacing it with gemini-embedding-001. The legacy model was available through Vertex AI at $25 per million input tokens, making gemini-embedding-001 significantly more affordable at $0.15 per 1M tokens through the Gemini API. text-embedding-005 is mentioned in some documentation but gemini-embedding-001 is the official successor.",
+      "sources": [
+        "https://github.com/mem0ai/mem0/issues/3942",
+        "https://discuss.ai.google.dev/t/what-is-the-retirement-date-for-text-embedding-004-model/107445",
+        "https://www.metacto.com/blogs/the-true-cost-of-google-gemini-a-guide-to-api-pricing-and-integration"
+      ]
+    },
+    {
+      "topic": "Free Tier Availability",
+      "key_points": [
+        "Google AI Studio offers free access to Gemini 2.5 Flash and Flash-Lite",
+        "Lower rate limits apply to free tier",
+        "No monthly fee, no seat-based pricing",
+        "Suitable for testing and development"
+      ],
+      "details": "Google provides completely free access to select models (including 2.5 Flash and Flash-Lite) through Google AI Studio with a standard Google account. This free tier has lower rate limits but no billing requirements, making it ideal for prototyping and small-scale testing.",
+      "sources": [
+        "https://www.datastudios.org/post/google-ai-studio-pricing-free-access-usage-limits-api-costs-and-production-billing-in-early-2026",
+        "https://ai.google.dev/gemini-api/docs/billing"
+      ]
+    },
+    {
+      "topic": "Batch API Benefits",
+      "key_points": [
+        "50% cost reduction across all models",
+        "Available for asynchronous, non-time-sensitive workloads",
+        "Same 50% discount applies to both generation and embedding models"
+      ],
+      "details": "Google offers a Batch API tier that provides 50% cost savings for all Gemini models. This is particularly valuable for embedding workloads where you can process large volumes of text asynchronously.",
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/pricing"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "title": "Gemini Developer API pricing | Gemini API | Google AI for Developers",
+      "type": "official-docs",
+      "relevance": "high",
+      "summary": "Official Google pricing documentation with exact per-million-token costs for all Gemini models including Flash-Lite, Flash, and Embedding"
+    },
+    {
+      "url": "https://www.metacto.com/blogs/the-true-cost-of-google-gemini-a-guide-to-api-pricing-and-integration",
+      "title": "Google Gemini API Pricing 2026: Complete Cost Guide per 1M Tokens",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "Comprehensive third-party pricing guide with context about pricing ranges and model comparisons"
+    },
+    {
+      "url": "https://pricepertoken.com/pricing-page/model/google-gemini-2.5-flash-lite",
+      "title": "Gemini 2.5 Flash Lite API Pricing 2026",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "Detailed Flash-Lite pricing breakdown with features and performance information"
+    },
+    {
+      "url": "https://developers.googleblog.com/gemini-embedding-available-gemini-api/",
+      "title": "Gemini Embedding now generally available in the Gemini API",
+      "type": "official-docs",
+      "relevance": "high",
+      "summary": "Official announcement of gemini-embedding-001 availability and features"
+    },
+    {
+      "url": "https://ai.google.dev/gemini-api/docs/embeddings",
+      "title": "Embeddings | Gemini API | Google AI for Developers",
+      "type": "official-docs",
+      "relevance": "high",
+      "summary": "Official documentation for Gemini embedding models"
+    },
+    {
+      "url": "https://github.com/mem0ai/mem0/issues/3942",
+      "title": "DOC: Google deprecated the text-embedding-004 model - January 14, 2026",
+      "type": "discussion",
+      "relevance": "high",
+      "summary": "GitHub issue documenting the text-embedding-004 deprecation date"
+    },
+    {
+      "url": "https://discuss.ai.google.dev/t/what-is-the-retirement-date-for-text-embedding-004-model/107445",
+      "title": "What is the retirement date for text-embedding-004 model?",
+      "type": "discussion",
+      "relevance": "medium",
+      "summary": "Google AI forum discussion about text-embedding-004 retirement"
+    },
+    {
+      "url": "https://www.aifreeapi.com/en/posts/gemini-api-pricing-2026",
+      "title": "Gemini API Pricing 2026: Complete Per-1M-Token Cost Guide",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "Third-party pricing guide with cost comparisons and optimization tips"
+    },
+    {
+      "url": "https://www.datastudios.org/post/google-ai-studio-pricing-free-access-usage-limits-api-costs-and-production-billing-in-early-2026",
+      "title": "Google AI Studio Pricing: Free Access, Usage Limits, API Costs",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "Analysis of free tier availability and limitations"
+    },
+    {
+      "url": "https://ai.google.dev/gemini-api/docs/billing",
+      "title": "Billing | Gemini API | Google AI for Developers",
+      "type": "official-docs",
+      "relevance": "medium",
+      "summary": "Official billing documentation explaining pricing tiers"
+    }
+  ],
+  "related_topics": [
+    "Gemini 2.5 Pro pricing (higher tier model)",
+    "Vertex AI vs Gemini API pricing differences",
+    "Context caching pricing for reducing costs on repeated prompts",
+    "Rate limits and quotas for free vs paid tiers",
+    "Cost optimization strategies (batch API, caching, prompt engineering)",
+    "Comparison with OpenAI and Anthropic pricing"
+  ],
+  "confidence": "high",
+  "gaps": [
+    "text-embedding-005 exact status and pricing (appears to be superseded by gemini-embedding-001)",
+    "Specific rate limits for free tier models",
+    "Context caching pricing details",
+    "Exact performance differences between Flash-Lite and Flash that justify 3-6x price difference"
+  ]
+}

@@ -1,0 +1,261 @@
+{
+  "query": "Hybrid approaches combining embeddings and LLMs for text/document segmentation (topic segmentation, chunking)",
+  "timestamp": "2026-02-08T00:00:00Z",
+  "summary": "Recent research (2024-2026) shows active development in hybrid text segmentation approaches. Key strategies include: (1) LLM-enhanced TextTiling using embedding similarity, (2) Late Chunking (embed-then-chunk vs chunk-then-embed), (3) Ensemble methods with router LLMs selecting optimal chunkers, (4) LLM-as-evaluator refining embedding-based boundaries. Evidence shows LLM-based methods achieve 10-30% quality improvements over embedding-only baselines, with trade-offs in cost and latency.",
+  "findings": [
+    {
+      "topic": "LLM-Enhanced TextTiling (Embedding + Classic Algorithm Hybrid)",
+      "key_points": [
+        "Extended TextTiling uses cosine similarity over LLM embeddings of sentence windows to detect topic boundaries",
+        "Implementation combines SentenceTransformer (all-mpnet-base-v2, all-MiniLM-L6-v2) or OpenAI embeddings with TextTiling algorithm",
+        "Hyperparameter tuning includes window size (k), pooling strategy (mean/max/min), and similarity threshold",
+        "Practical open-source implementation available (saeedabc/llm-text-tiling on GitHub)"
+      ],
+      "details": "This approach represents a direct hybrid: classic TextTiling boundary detection algorithm enhanced with modern LLM embeddings instead of traditional TF-IDF. The embedding step provides semantic understanding while TextTiling provides the boundary detection heuristic.",
+      "sources": [
+        "https://github.com/saeedabc/llm-text-tiling",
+        "https://www.mdpi.com/2076-3417/15/19/10849"
+      ]
+    },
+    {
+      "topic": "Late Chunking (Contextual Embedding Strategy)",
+      "key_points": [
+        "Late chunking reverses traditional pipeline: embed full document first, then chunk before mean pooling",
+        "Preserves global context while producing individual chunk embeddings",
+        "Works with long-context embedding models without additional training",
+        "Shows superior retrieval performance compared to chunk-then-embed approaches"
+      ],
+      "details": "Published in arXiv 2409.04701 (2024). This is not a hybrid of embedding+LLM per se, but a novel embedding strategy that addresses chunking as part of the embedding pipeline rather than preprocessing. Relevant because it shows embedding architecture choices can solve chunking problems without explicit LLM boundary detection.",
+      "sources": [
+        "https://arxiv.org/abs/2409.04701",
+        "https://arxiv.org/pdf/2409.04701"
+      ]
+    },
+    {
+      "topic": "Ensemble and Router-Based Hybrid Methods",
+      "key_points": [
+        "Mixture-of-Chunkers (MoC): trains specialist chunkers for different granularity levels, router LLM selects optimal model",
+        "Metric Fusion Chunking (MFC): integrates dot-product, Euclidean, Manhattan metrics via learned-layer fusion",
+        "Ensemble approaches outperform both fixed-size and single semantic chunkers on QA F1 scores",
+        "MFC showed 10-24x MRR gains over naive chunkers in biomedical RAG tasks"
+      ],
+      "details": "These approaches use LLMs as decision-makers or routers to select among multiple chunking strategies, rather than doing the chunking themselves. The LLM acts as meta-learner choosing the best chunker for each context.",
+      "sources": [
+        "https://www.emergentmind.com/topics/semantic-chunking-algorithm",
+        "https://www.firecrawl.dev/blog/best-chunking-strategies-rag-2025"
+      ]
+    },
+    {
+      "topic": "LLM-as-Judge for Boundary Refinement",
+      "key_points": [
+        "LLMs provide sentence-level perplexity or decision-margin scores to identify logical segmentation points",
+        "Local minima of perplexity indicate coherence peaks suggesting chunk boundaries",
+        "LLM-as-Judge evaluates chunk quality and suggests refinements to embedding-based boundaries",
+        "Used in RAG evaluation frameworks (Ragas v0.2, Amazon Bedrock RAG evaluation)"
+      ],
+      "details": "This pattern uses LLMs to evaluate and refine boundaries detected by embedding similarity, rather than detecting boundaries directly. The LLM acts as a quality gate or refinement layer on top of embedding-based chunking.",
+      "sources": [
+        "https://www.emergentmind.com/topics/semantic-chunking-algorithm",
+        "https://aws.amazon.com/jp/blogs/news/new-rag-evaluation-and-llm-as-a-judge-capabilities-in-amazon-bedrock/",
+        "https://zenn.dev/daijobu/articles/0004b207625842"
+      ]
+    },
+    {
+      "topic": "Direct LLM Chunking (Full LLM Approach)",
+      "key_points": [
+        "LLM analyzes document structure and decides chunk boundaries based on semantic understanding",
+        "LLMSemanticChunker achieved 0.919 recall vs ClusterSemanticChunker 0.913",
+        "LumberChunker (LLM-based) achieved DCG@20 of 62.09 vs baseline 54.72 (recursive fixed-size)",
+        "Expensive approach requiring LLM calls for every document, but highest quality"
+      ],
+      "details": "This is the LLM-only approach (not hybrid). Included for comparison. Shows that pure LLM methods achieve 10-15% quality improvements over embedding baselines, but at significant computational cost.",
+      "sources": [
+        "https://www.pinecone.io/learn/chunking-strategies/",
+        "https://machinelearningmastery.com/essential-chunking-techniques-for-building-better-llm-applications/",
+        "https://weaviate.io/blog/chunking-strategies-for-rag"
+      ]
+    },
+    {
+      "topic": "Adaptive and Agentic Chunking",
+      "key_points": [
+        "Agentic chunking uses LLM as autonomous agent to organize and split content",
+        "Adaptive chunking achieved 87% accuracy vs 50% baseline in clinical document evaluation",
+        "Retrieval metrics with adaptive: precision 0.50, recall 0.88, F1 0.64",
+        "LLM makes context-aware decisions instead of following fixed rules or pure embedding similarity"
+      ],
+      "details": "Japanese sources (Qiita) refer to this as 'エージェント型チャンキング'. The LLM functions as an active decision-maker that can adjust chunking strategy based on document characteristics. More dynamic than static LLM prompts.",
+      "sources": [
+        "https://rusiruavb.medium.com/agentic-chunking-in-langchain-c9e4cf833196",
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC12649634/",
+        "https://qiita.com/ymgc3/items/44d1638711dc76f129fd"
+      ]
+    },
+    {
+      "topic": "Hybrid Search Integration (Keyword + Embedding)",
+      "key_points": [
+        "Combines traditional keyword search (BM25) with vector/embedding search",
+        "Standard approach in production RAG systems as of 2025",
+        "Addresses weaknesses of pure embedding search (e.g., struggles with proper nouns, exact matches)",
+        "Both Japanese and English sources emphasize this as current best practice"
+      ],
+      "details": "While not directly about segmentation/chunking, hybrid search is the dominant pattern for combining traditional and LLM-based approaches in production. This suggests hybrid approaches are generally more robust than pure LLM methods.",
+      "sources": [
+        "https://fintan.jp/page/10301/",
+        "https://ai-market.jp/howto/rag-rate/",
+        "https://zenn.dev/suwash/articles/rag_accuracy_20250516"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://github.com/saeedabc/llm-text-tiling",
+      "title": "Extended TextTiling using LLM Embeddings for Text Segmentation",
+      "type": "official-docs",
+      "relevance": "high",
+      "summary": "Open-source implementation of TextTiling enhanced with LLM embeddings (SentenceTransformer, OpenAI)"
+    },
+    {
+      "url": "https://arxiv.org/abs/2409.04701",
+      "title": "Late Chunking: Contextual Chunk Embeddings Using Long-Context Embedding Models",
+      "type": "research-paper",
+      "relevance": "high",
+      "summary": "Novel approach: embed full document first, then chunk before pooling to preserve context"
+    },
+    {
+      "url": "https://www.mdpi.com/2076-3417/15/19/10849",
+      "title": "LLM-Enhanced Semantic Text Segmentation (MDPI 2025)",
+      "type": "research-paper",
+      "relevance": "high",
+      "summary": "Research on LLM embeddings improving segmentation accuracy with dataset-specific analysis"
+    },
+    {
+      "url": "https://www.pinecone.io/learn/chunking-strategies/",
+      "title": "Chunking Strategies for LLM Applications",
+      "type": "tutorial",
+      "relevance": "high",
+      "summary": "Comprehensive guide covering semantic, LLM-based, and fixed-size chunking strategies"
+    },
+    {
+      "url": "https://www.emergentmind.com/topics/semantic-chunking-algorithm",
+      "title": "Semantic Chunking Algorithm Survey",
+      "type": "research-summary",
+      "relevance": "high",
+      "summary": "Survey of recent algorithms including MoC, MFC, and LLM-based approaches with performance comparisons"
+    },
+    {
+      "url": "https://www.firecrawl.dev/blog/best-chunking-strategies-rag-2025",
+      "title": "Best Chunking Strategies for RAG in 2025",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "2025 state-of-the-art including late chunking, max-min semantic, and ensemble methods"
+    },
+    {
+      "url": "https://machinelearningmastery.com/essential-chunking-techniques-for-building-better-llm-applications/",
+      "title": "Essential Chunking Techniques for Building Better LLM Applications",
+      "type": "tutorial",
+      "relevance": "high",
+      "summary": "Practical guide covering semantic, LLM-based, and graph-based chunking with examples"
+    },
+    {
+      "url": "https://weaviate.io/blog/chunking-strategies-for-rag",
+      "title": "Chunking Strategies to Improve Your RAG Performance (Weaviate)",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "Technical deep-dive on chunking trade-offs and strategies from vector DB perspective"
+    },
+    {
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12649634/",
+      "title": "Comparative Evaluation of Advanced Chunking for RAG in Clinical Decision Support",
+      "type": "research-paper",
+      "relevance": "medium",
+      "summary": "Clinical evaluation showing adaptive chunking achieved 87% accuracy vs 50% baseline"
+    },
+    {
+      "url": "https://rusiruavb.medium.com/agentic-chunking-in-langchain-c9e4cf833196",
+      "title": "Agentic Chunking in LangChain",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "LLM as autonomous agent for dynamic chunking decisions in LangChain framework"
+    },
+    {
+      "url": "https://qiita.com/ymgc3/items/44d1638711dc76f129fd",
+      "title": "チャンキング戦略 (Qiita, Japanese)",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "Japanese overview of chunking strategies including agentic/LLM-based approaches"
+    },
+    {
+      "url": "https://fintan.jp/page/10301/",
+      "title": "RAGの性能を改善するための8つの戦略 (Japanese)",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "8 strategies for improving RAG performance including hybrid search and semantic chunking"
+    },
+    {
+      "url": "https://ai-market.jp/howto/rag-rate/",
+      "title": "なぜRAGの評価は難しい？(Japanese)",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "Explains RAG evaluation challenges and LLM-as-Judge methodology"
+    },
+    {
+      "url": "https://zenn.dev/daijobu/articles/0004b207625842",
+      "title": "LLMの評価基準と品質向上を支えるRagasの基本 (Zenn, Japanese)",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "Ragas framework for evaluating RAG and LLM quality including chunking evaluation"
+    },
+    {
+      "url": "https://aws.amazon.com/jp/blogs/news/new-rag-evaluation-and-llm-as-a-judge-capabilities-in-amazon-bedrock/",
+      "title": "Amazon Bedrock RAG Evaluation and LLM-as-a-Judge",
+      "type": "official-docs",
+      "relevance": "medium",
+      "summary": "AWS announcement of LLM-as-Judge for evaluating RAG chunking quality (Dec 2024)"
+    },
+    {
+      "url": "https://github.com/segment-any-text/wtpsplit",
+      "title": "WtPSplit: Segment Any Text",
+      "type": "official-docs",
+      "relevance": "low",
+      "summary": "State-of-the-art sentence segmentation tool (not chunk-level, but relevant for preprocessing)"
+    }
+  ],
+  "related_topics": [
+    "Retrieval-Augmented Generation (RAG) pipeline optimization",
+    "Long-context embedding models and their impact on chunking",
+    "LLM perplexity as boundary detection signal",
+    "Chunk size vs context window trade-offs in RAG systems",
+    "Evaluation metrics for text segmentation quality (Pk, WindowDiff, BoundaryPRF)",
+    "Cross-lingual chunking strategies",
+    "Domain-specific chunking (legal, medical, code)"
+  ],
+  "confidence": "high",
+  "gaps": [
+    "Limited empirical comparisons directly measuring 'embedding baseline + LLM refinement' vs 'LLM-only' on same datasets",
+    "Most papers focus on RAG chunking (retrieval optimization) rather than pure topic segmentation quality",
+    "Few studies explicitly quantify the cost/quality trade-off for hybrid approaches in production",
+    "Limited discussion of when embedding-only is sufficient vs when LLM enhancement is necessary",
+    "Japanese research tends to focus on practical RAG implementation rather than fundamental segmentation algorithms"
+  ],
+  "practical_recommendations": [
+    "Start with embedding-based semantic chunking (cosine similarity threshold) as baseline - cheap and effective",
+    "Add LLM refinement selectively: use LLM to evaluate boundary confidence and refine uncertain cases",
+    "Consider late chunking for long documents where context preservation is critical",
+    "For production systems, use router/ensemble pattern: embedding-based for most docs, LLM for high-value docs",
+    "Benchmark shows ~10-30% quality gain from LLM methods, but 10x+ cost - calculate ROI for your use case",
+    "For kire project specifically: current embedding+TextTiling hybrid is well-aligned with research trends; adding LLM as optional refinement layer (similar to LLM-as-Judge pattern) could be next evolution"
+  ],
+  "evidence_summary": {
+    "question": "Does combining embedding + LLM improve quality over LLM-only?",
+    "answer": "Limited direct evidence, but patterns suggest YES with caveats",
+    "details": [
+      "LLM-only approaches show 10-15% quality gains over embedding-only baselines",
+      "Hybrid/ensemble methods (MoC, MFC) outperform both single-method approaches",
+      "Late chunking (architectural hybrid) shows superior performance to traditional chunk-then-embed",
+      "Cost-benefit: LLM-only is expensive; embedding+LLM-refinement offers middle ground",
+      "Real-world systems (AWS Bedrock, production RAG) use hybrid search and multi-stage pipelines",
+      "However: no papers found directly comparing 'embedding+LLM' vs 'LLM-only' in controlled study"
+    ],
+    "conclusion": "Hybrid approaches are standard practice in production (2025), suggesting practical benefits. Pure LLM methods achieve highest quality but at high cost. Optimal strategy appears to be: embedding for baseline, LLM for refinement/evaluation/routing."
+  }
+}

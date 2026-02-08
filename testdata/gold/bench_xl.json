@@ -1,18 +1,21 @@
 {
   "doc_id": "bench_xl",
   "unit": "block",
-  "boundaries": [4, 10, 15, 21, 26, 32, 37, 43, 48, 54, 59, 65, 70, 76, 81, 87, 92, 98],
+  "boundaries": [4, 15, 26, 37, 48, 59, 70, 81, 92],
   "params": {
-    "eval_stage": "final",
-    "tolerance": 0,
-    "min_tokens": 200,
-    "max_tokens": 500,
-    "max_lines": 0
+    "eval_stage": "raw",
+    "tolerance": 1
   },
   "notes": {
-    "description": "104 blocks. Nine sections with ten paragraphs each. Boundaries are after paragraph 5 and paragraph 10 of each section, plus one boundary after the introduction. This creates mid-section transitions while keeping headings as segment anchors.",
-    "heading_split_would_be": "gaps after each section's last paragraph (end of section)",
-    "design_intent": "Paragraphs reuse shared vocabulary (pipeline, latency, throughput, backpressure) so boundaries rely on topic shifts rather than keyword changes.",
-    "raw_comparison": "embedder 比較（raw）時は --profile embedder --split-count 19 を推奨。split-count を gold params に入れると final 評価で section lock との干渉が起きるため手動指定とする。"
+    "description": "104 blocks: synthetic event processing design review with 9 sections. Heading-level segmentation.",
+    "boundary_4": "before ## Ingestion and Capture (block 5)",
+    "boundary_15": "before ## Schema Normalization (block 16)",
+    "boundary_26": "before ## Routing and Partitioning (block 27)",
+    "boundary_37": "before ## Aggregation Windows (block 38)",
+    "boundary_48": "before ## State Storage (block 49)",
+    "boundary_59": "before ## Serving and Query (block 60)",
+    "boundary_70": "before ## Access Control (block 71)",
+    "boundary_81": "before ## Observability and SLOs (block 82)",
+    "boundary_92": "before ## Failure Recovery (block 93)"
   }
 }

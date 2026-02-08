@@ -22,6 +22,63 @@
 
 ## Log
 
+### 2026-02-08 LLM 分割モード比較 (bench_xl)
+
+**Command (output profile, final stage, max-tokens=800):**
+```bash
+kire bench --profile output --no-baselines --boundary-method llm testdata/gold/bench_xl.json testdata/bench_xl.md
+kire bench --profile output --no-baselines --embedder tfidf testdata/gold/bench_xl.json testdata/bench_xl.md
+kire bench --profile output --no-baselines --embedder gemini testdata/gold/bench_xl.json testdata/bench_xl.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (llm,final) | 18 | 0.20 | 0.20 | 0.47 | 0.44 | 0.46 |
+| kire (tfidf,final) | 18 | 0.39 | 0.39 | 0.00 | 0.00 | 0.00 |
+| kire (gemini,final) | 16 | 0.41 | 0.41 | 0.07 | 0.06 | 0.06 |
+
+**Notes:** LLM (gemini-2.5-flash-lite) が output profile で圧勝。Pk 半分、F1 0.46 vs 0.00-0.06
+
+---
+
+**Command (raw, embedder comparison):**
+```bash
+kire bench --eval-stage raw --no-baselines --boundary-method llm testdata/gold/bench_xl.json testdata/bench_xl.md
+kire bench --profile embedder --split-count 19 --no-baselines --embedder tfidf testdata/gold/bench_xl.json testdata/bench_xl.md
+kire bench --profile embedder --split-count 19 --no-baselines --embedder gemini testdata/gold/bench_xl.json testdata/bench_xl.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (llm) | 10 | 0.33 | 0.33 | 0.11 | 0.06 | 0.07 |
+| kire (tfidf) | 20 | 0.49 | 0.56 | 0.32 | 0.33 | 0.32 |
+| kire (gemini) | 20 | 0.56 | 0.61 | 0.21 | 0.22 | 0.22 |
+
+**Notes:** raw では LLM のセグメント数が少ない（10 vs gold 19）。LLM は高確信の境界のみ出力する傾向。Pk は最良だが P/R/F1 は低い。optimizer 補正後の final で逆転する
+
+---
+
+**Command (both stages with baselines):**
+```bash
+kire bench --eval-stage both --boundary-method llm testdata/gold/bench_xl.json testdata/bench_xl.md
+```
+
+**Result:**
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|------|-----|-------|-----|-----|-----|
+| kire (llm,raw) | 10 | 0.33 | 0.33 | 0.11 | 0.06 | 0.07 |
+| kire (llm,final) | 28 | 0.35 | 0.35 | 0.33 | 0.50 | 0.40 |
+| heading-split (raw) | 10 | 0.18 | 0.18 | 1.00 | 0.50 | 0.67 |
+| fixed-5 (raw) | 21 | 0.49 | 0.49 | 0.15 | 0.17 | 0.16 |
+| random (n=18) (raw) | 14 | 0.36 | 0.36 | 0.31 | 0.22 | 0.26 |
+| heading-split (final) | 19 | 0.26 | 0.34 | 0.50 | 0.50 | 0.50 |
+| fixed-5 (final) | 21 | 0.47 | 0.47 | 0.20 | 0.22 | 0.21 |
+| random (n=18) (final) | 21 | 0.27 | 0.31 | 0.45 | 0.50 | 0.47 |
+
+---
+
 ### 2026-02-03 23:10
 
 **Command:**

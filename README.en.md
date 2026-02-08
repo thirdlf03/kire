@@ -7,20 +7,21 @@
 
 [日本語](README.md)
 
-A Go CLI that splits Markdown at topic boundaries. Instead of splitting at headings, it detects where the topic shifts using embedding similarity — [TextTiling](https://aclanthology.org/J97-1003/) for Markdown.
+A Go CLI that splits Markdown at topic boundaries. An LLM reads the entire document and directly detects semantic boundaries.
 
 ```bash
+$ export GEMINI_API_KEY=your-key
 $ kire spec.md
-Wrote 3 segments to spec/
-Wrote spec/index.md
+Wrote 3 segments to docs/spec/
+Wrote docs/spec/index.md
 ```
 
 ## Features
 
 - Concatenating segments reproduces the original byte-for-byte (lossless)
-- `--min-tokens` / `--max-tokens` to fit LLM context windows
+- LLM (Gemini) understands the text and decides where to split
 - Parent headings are automatically prepended to each segment
-- Gemini / OpenAI / Ollama / TF-IDF / Mock embedders. Works without an API key
+- `--llm-refine` adds embedding cosine similarity as additional context for the LLM
 - SHA256 content-addressable IDs and quality scores for agent workflows
 
 ## Installation
@@ -65,7 +66,7 @@ The [`example/`](example/) directory contains sample input and output.
 Given a Chat API design document (1 file, ~270 lines):
 
 ```bash
-$ kire --embedder tfidf --min-tokens 100 --max-tokens 800 example/input.md
+$ kire example/input.md
 ```
 
 It splits into 4 segments at topic boundaries.
@@ -98,40 +99,47 @@ $ kire merge --strip-context example/output/input/ | diff example/input.md -
 ## Usage
 
 ```bash
-# Quick start (no API key needed, splits with Mock embedder)
+# Basic usage (requires GEMINI_API_KEY)
+export GEMINI_API_KEY=your-key
 kire document.md
 
 # Specify output directory and prefix
 kire --out docs --prefix split document.md
 
-# Use the Gemini API
-export GEMINI_API_KEY=your-key
-kire document.md
+# LLM-refine mode (pass embedding cosine similarity to LLM)
+kire --llm-refine document.md
 
-# No API needed (TF-IDF)
-kire --embedder tfidf document.md
+# LLM-refine with a specific embedder
+kire --llm-refine --embedder tfidf document.md
 
 # Batch process multiple files
 kire --in a.md --in b.md --out docs
 ```
 
-`--dry-run` previews without writing files. `--report` generates an HTML boundary report.
+`--dry-run` previews without writing files.
 
-All options via `kire --help`. Common ones:
+### Options
 
 ```
---min-tokens int     Minimum token count (default: 300)
---max-tokens int     Maximum token count (default: 3000)
---block-k-auto       Automatically select block-k based on document size
---window int         Similarity smoothing window (default: 3)
---threshold float    Boundary score threshold (-1 = auto)
---overlap int        Overlapping lines between segments
---boundary-method    texttiling|kcpd|hybrid
---beta-strategy      auto|bic|crossval|theory
---embedder string    auto|gemini|openai|ollama|tfidf|mock
---cache string       Embedding cache file path
---jsonl              JSONL metadata output (--jsonl=- for stdout)
---agent-metadata     Include segment IDs and quality scores
+--llm-model string        LLM model name (default: gemini-2.5-flash-lite)
+--llm-refine              Add embedding cosine similarity as LLM context
+--overlap int             Overlapping lines between segments
+--context-format          comment|front-matter|heading|none
+--context-max-depth int   Max heading depth for context (0 = unlimited)
+--embedder string         Embedder (for --llm-refine): auto|gemini|openai|ollama|tfidf|mock
+--embed-model string      Embedding model name (for --llm-refine)
+--cache string            Embedding cache file path (for --llm-refine)
+--jsonl                   JSONL metadata output (--jsonl=- for stdout)
+--agent-metadata          Include segment IDs and quality scores
+--state-file string       Incremental processing state file
+--dag-json string         Export DAG as JSON
+--dag-dot string          Export DAG as DOT
+--prefix string           Output file prefix (empty = semantic naming)
+--out string              Output directory (default: docs)
+--force                   Overwrite without confirmation
+--dry-run                 Run without writing files
+--quiet                   Suppress all log output
+--json                    Output JSON summary to stdout
 ```
 
 ### Merge
@@ -160,9 +168,26 @@ kire --dag-json dag.json --dag-dot dag.dot document.md
 kire --state-file .kire-state.json document.md
 ```
 
-## Embedding providers
+## LLM-refine mode
 
-Selected via `--embedder`. Default is `auto` (Gemini if `GEMINI_API_KEY` is set, otherwise TF-IDF).
+With `--llm-refine`, embedding cosine similarities are computed before calling the LLM and included in the prompt. This helps the LLM identify gaps with low similarity as potential boundaries.
+
+```bash
+# auto (Gemini if GEMINI_API_KEY is set, otherwise TF-IDF)
+kire --llm-refine document.md
+
+# TF-IDF (no API, deterministic)
+kire --llm-refine --embedder tfidf document.md
+
+# OpenAI
+export OPENAI_API_KEY=your-key
+kire --llm-refine --embedder openai document.md
+
+# Ollama (local)
+kire --llm-refine --embedder ollama document.md
+```
+
+Available embedders:
 
 | Provider | API Key | Default Model | Local |
 |----------|---------|---------------|-------|
@@ -171,18 +196,6 @@ Selected via `--embedder`. Default is `auto` (Gemini if `GEMINI_API_KEY` is set,
 | `ollama` | Not required (`OLLAMA_HOST` to change endpoint) | `nomic-embed-text` | Yes |
 | `tfidf` | Not required | — | Yes |
 | `mock` | Not required | — | Yes |
-
-```bash
-# OpenAI
-export OPENAI_API_KEY=your-key
-kire --embedder openai document.md
-
-# Ollama (local)
-kire --embedder ollama --embed-model mxbai-embed-large document.md
-
-# TF-IDF (no API, deterministic)
-kire --embedder tfidf document.md
-```
 
 ## Multi-agent support
 
@@ -210,12 +223,12 @@ result, err := pipeline.Run(ctx, cfg)
 ## How it works
 
 ```
-Source → Parse → ParaSplit → PseudoHeading → Tokenize → Embed → Boundary → Lock → Segment → Render → Output
+Source → Parse → Tokenize → LineEstimate → [LLM-Refine? Embed+Sims : noop] → LLM Boundary → Optimize → IDs → Quality → Render → Output
 ```
 
-It starts by parsing Markdown into an AST with goldmark and breaking it into blocks. Each block gets a SourceRange (byte offset) and HeadingPath. Long paragraphs are pre-split, and blocks without explicit headings get pseudo-heading detection.
+It starts by parsing Markdown into an AST with goldmark and breaking it into blocks. Each block gets a SourceRange (byte offset) and HeadingPath.
 
-After vectorizing blocks, cosine similarity between adjacent blocks is computed, then smoothing → depth score → threshold selection detects boundaries. Section locking keeps headings together with their body, and a greedy algorithm groups blocks into segments.
+The LLM reads all blocks and returns a list of gap indices where semantic boundaries should be placed, using structured output to ensure valid JSON. In LLM-refine mode, embedding cosine similarities between adjacent blocks are computed first and included in the prompt.
 
 Finally, the original text is restored byte-for-byte via SourceRange, context headers and overlap are applied, and files are written out.
 
@@ -228,21 +241,30 @@ cmd/kire/
 ├── root.go          Flag definitions
 ├── run.go           Main execution logic
 ├── merge.go         merge subcommand
-└── summary.go       JSON summary generation
+├── bench.go         Benchmark subcommand
+├── summary.go       JSON summary generation
+├── config.go        Config structs
+├── logger.go        Log setup
+└── completion.go    Shell completion
 
 internal/
 ├── model/           Block, Segment, Embedding, SourceRange
 ├── parser/          Markdown → []Block (goldmark)
-├── tokenizer/       Token estimation (local/api/hybrid)
-├── embedding/       Embedder interface + providers + Cached/Concurrent decorators
-├── boundary/        TextTiling boundary scoring + confidence
-├── segment/         Greedy splitting + ID generation + quality scores
-├── context/         Parent heading context insertion
+├── tokenizer/       Token estimation
+├── embedding/       Embedder interface + providers (for --llm-refine)
+│   ├── cached.go    Cache decorator
+│   └── concurrent.go Concurrent decorator
+├── llmsplit/        LLM boundary detection (Gemini structured output)
+├── boundary/        BoundaryResult + similarity utilities
+├── segment/         Segment optimization + ID generation + quality scores
+├── ctxheader/       Parent heading context insertion
 ├── output/          File output + JSONL + merge
 ├── cache/           Embedding cache (JSON)
 ├── dag/             Dependency DAG export (JSON/DOT)
 ├── concurrency/     Worker pool + rate limiter
-└── pipeline/        Pipeline orchestration + hooks + incremental processing
+├── vecmath/         Vector math (cosine similarity)
+├── pipeline/        Pipeline orchestration + hooks + incremental processing
+└── eval/            Benchmark evaluation (Pk, WindowDiff, PRF)
 ```
 
 </details>
@@ -253,35 +275,19 @@ internal/
 
 Test data is `testdata/bench_xl.md` (104 blocks, 18 gold boundaries). The document has intentionally overlapping vocabulary across sections, containing topic transitions that heading-based splitting cannot detect.
 
-### Output quality (final segment boundaries)
+### LLM vs embedding-based (final stage)
 
-| Embedder | Segs | Pk | WDiff | P | R | F1 |
-|----------|-----:|-----:|------:|-----:|-----:|-----:|
-| tfidf | 17 | 0.10 | 0.10 | 0.88 | 0.78 | 0.82 |
-| gemini | 17 | 0.10 | 0.10 | 0.88 | 0.78 | 0.82 |
-| ollama | 14 | 0.35 | 0.35 | 0.23 | 0.17 | 0.19 |
-| mock | 13 | 0.33 | 0.33 | 0.42 | 0.28 | 0.33 |
-| openai | 17 | 0.41 | 0.41 | 0.00 | 0.00 | 0.00 |
+| Method | Segs | Pk | WDiff | P | R | F1 |
+|--------|-----:|-----:|------:|-----:|-----:|-----:|
+| LLM | 18 | 0.20 | 0.20 | 0.47 | 0.44 | 0.46 |
+| tfidf | 18 | 0.39 | 0.39 | 0.00 | 0.00 | 0.00 |
+| gemini | 16 | 0.41 | 0.41 | 0.07 | 0.06 | 0.06 |
 
-Measured with `--profile output` (eval-stage=final, max-tokens=800). Includes optimizer merge/pack/heading adjustments.
-
-### Boundary detection (embedder comparison)
-
-| Embedder | Segs | Pk | WDiff | P | R | F1 |
-|----------|-----:|-----:|------:|-----:|-----:|-----:|
-| mock | 20 | 0.39 | 0.43 | 0.26 | 0.28 | 0.27 |
-| ollama | 20 | 0.43 | 0.48 | 0.26 | 0.28 | 0.27 |
-| gemini | 20 | 0.46 | 0.50 | 0.21 | 0.22 | 0.22 |
-| openai | 20 | 0.49 | 0.54 | 0.21 | 0.22 | 0.22 |
-| tfidf | 20 | 0.48 | 0.51 | 0.16 | 0.17 | 0.16 |
-
-Measured with `--profile embedder --split-count 19` (eval-stage=raw, tolerance=0, constraints off). Raw boundary detection without optimizer.
-
-Rankings differ between output quality and detection because the optimizer adjusts boundary positions.
+LLM mode halves the Pk and significantly outperforms embedding-based methods on F1.
 
 ```bash
 just bench            # Quality + performance benchmarks
-just bench-quality    # Quality evaluation only (texttiling/kcpd/hybrid)
+just bench-quality    # Quality evaluation only
 just bench-perf       # Go performance benchmarks only
 ```
 

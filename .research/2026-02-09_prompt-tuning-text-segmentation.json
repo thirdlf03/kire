@@ -1,0 +1,593 @@
+{
+  "query": "LLM を使ったテキストセグメンテーション（文書分割）のプロンプトエンジニアリング",
+  "timestamp": "2026-02-09T00:00:00Z",
+  "summary": "LLM によるテキストセグメンテーションでは、structured output と few-shot 例示、chain-of-thought 推論、文書特性に応じた動的プロンプト調整が効果的。Gemini API では schema description フィールドと system instruction の適切な使い分けが重要。過分割・過少分割を防ぐには、文書タイプ（見出し構造の有無）を事前検知し、プロンプトの粒度ガイダンスを動的に調整する adaptive prompting が推奨される。",
+  "findings": [
+    {
+      "topic": "LLM テキストセグメンテーションの基本アプローチと研究動向",
+      "key_points": [
+        "LLM を使った topic segmentation は、重複・再帰プロンプト戦略と文境界の番号付けで実装される（arXiv 2601.03276）",
+        "文書を重複セクションに分割し、overlap を最大セグメント長の 2 倍（例: 最大 750 トークンなら overlap 1500 トークン）に設定",
+        "LLM には文境界を角括弧付き整数で区切ったテキスト + few-shot 例 + 短い指示 + system prompt を送信",
+        "長すぎるセグメントは同じ LLM で再帰的に分割、短すぎるセグメントは隣接セグメントと結合",
+        "境界検出は structured prompting で JSON 境界インデックス配列 `{\"boundaries\": [4, 10, 15]}` として出力",
+        "BoundRL アプローチ: セグメント全体ではなく開始トークンのみを生成することで推論コスト削減と hallucination 低減"
+      ],
+      "details": "研究によれば、LLM は既存手法より効果的なセグメンタになりうるが、信頼して利用するには未解決の課題が残る。特に、長文書を処理する際の context window の使い方が性能に大きく影響する。情報が文書の先頭・末尾（0-20% or 80-100%）にあると高いリコール率を達成するが、中央部（U-shaped performance curve）では精度が 20-30% 低下する。",
+      "sources": [
+        "https://arxiv.org/html/2601.03276",
+        "https://arxiv.org/abs/2601.03276",
+        "https://arxiv.org/html/2510.20151",
+        "https://link.springer.com/chapter/10.1007/978-3-031-97141-9_10"
+      ]
+    },
+    {
+      "topic": "Gemini API の structured output（ResponseSchema）を使ったプロンプトチューニング",
+      "key_points": [
+        "ResponseSchema は model response の構造を定義する blueprint として機能し、JSON validity を保証",
+        "schema の description フィールドにフィールドの目的を明確に記述することがベストプラクティス",
+        "フィールド名は明確で曖昧さのないものを使用。model は field name と description を利用して生成する",
+        "重要: schema は responseSchema フィールドにのみ含め、input prompt には重複記載しない（品質低下の原因）",
+        "propertyOrdering[] フィールドでプロパティの順序を制御可能（デフォルトはアルファベット順）",
+        "tuned model では structured output の使用が品質低下を引き起こす可能性があるため注意",
+        "enum type を使える場合は使用し、型（integer, string, enum）を可能な限り具体的に指定"
+      ],
+      "details": "Gemini structured output は OpenAPI 3.0 schema definition に基づいており、オープンスタンダード準拠。低 temperature（0.0-0.3）でより一貫した schema 準拠の結果が得られる。temperature=0 でも完全な決定論性は保証されず、seed 固定でも「best effort」レベル。model やパラメータ変更で seed が同じでも出力が変わることがある。",
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/structured-output",
+        "https://firebase.google.com/docs/ai-logic/generate-structured-output",
+        "https://developers.googleblog.com/en/mastering-controlled-generation-with-gemini-15-schema-adherence/",
+        "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/control-generated-output"
+      ]
+    },
+    {
+      "topic": "System instruction vs User prompt の使い分けと構造化ベストプラクティス",
+      "key_points": [
+        "System instruction は prompt 処理の前に model が処理する指示セット。role/persona、contextual information、formatting instructions を含める",
+        "Behavioral constraints と role 定義は System Instruction または prompt の最上部に配置して model の推論プロセスを anchor する",
+        "大規模コンテキスト（書籍、コードベース、長時間動画）では、具体的な指示を prompt の末尾（データコンテキストの後）に配置",
+        "Gemini 3 models は direct、well-structured、明確な task/constraints 定義に最もよく応答",
+        "XML スタイルのタグや Markdown で prompt を構造化し、instructions と data の境界を明確化",
+        "System instruction に sensitive information を含めることは推奨されない",
+        "構造化シグナル（headings, bullet hierarchies, labeled relationships）は LLM の attention weight を高め、salience score が向上"
+      ],
+      "details": "LLM は heading hierarchy を semantic boundary として認識し、構造的に顕著な token（heading）に高い attention を割り当てる。XML タグは「boundary markers」として機能し、prompt の異なる部分が混ざる「contamination」を防ぐ。これにより各セクションで適切な context が維持される。",
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/prompting-strategies",
+        "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/prompts/system-instructions",
+        "https://medium.com/google-cloud/practical-gemini-cli-instruction-following-system-prompts-and-context-d3c26bed51b6",
+        "https://www.philschmid.de/gemini-3-prompt-practices",
+        "https://govisible.ai/blog/semantic-markers-how-llms-parse-structured-content/",
+        "https://medium.com/@TechforHumans/effective-prompt-engineering-mastering-xml-tags-for-clarity-precision-and-security-in-llms-992cae203fdc"
+      ]
+    },
+    {
+      "topic": "粒度制御のテクニックと few-shot / chain-of-thought の活用",
+      "key_points": [
+        "Few-shot prompting: in-context learning で demonstrations により model を steering。2-3 個の例で十分、それ以上は diminishing returns",
+        "Chain-of-Thought (CoT): step-by-step reasoning を明示的に生成させることで複雑タスクの精度向上",
+        "Zero-shot CoT: 元の prompt に「Let's think step by step」を追加するだけで推論能力が向上",
+        "Few-shot CoT: reasoning chains を含む question-answer ペアを複数提供",
+        "タスク分解: 複雑プロセスを単純 subtask に分割することで clarity と performance が大幅改善",
+        "Large context 処理: テキストを小セグメントに分割し、要約を提供。次セグメントへ移る前の要約が cognitive/contextual anchor となる",
+        "Relevance filtering: 関連性の高い context のみを prompt に含めることで prompt size 削減と予測精度向上",
+        "CoT は推論プロセスを分解し、model が一度に問題の一部に集中できるようにすることで中間ステップのエラーリスクを最小化"
+      ],
+      "details": "Few-shot の例では、出力構造、トーン、スタイルを具体的に示すことが重要。BoundRL 研究では、few-shot prompting baseline よりも reinforcement learning アプローチが優れた結果を示した。CoT は特に multi-step math word problem のような複雑な推論タスクで効果を発揮する。",
+      "sources": [
+        "https://www.promptingguide.ai/techniques/fewshot",
+        "https://www.promptingguide.ai/techniques/cot",
+        "https://www.datacamp.com/tutorial/chain-of-thought-prompting",
+        "https://www.ibm.com/think/topics/chain-of-thoughts",
+        "https://learnprompting.org/docs/intermediate/chain_of_thought",
+        "https://winder.ai/llm-prompt-best-practices-large-context-windows/",
+        "https://towardsdatascience.com/boost-your-llm-outputdesign-smarter-prompts-real-tricks-from-an-ai-engineers-toolbox/"
+      ]
+    },
+    {
+      "topic": "文書タイプ適応型アプローチと adaptive prompting",
+      "key_points": [
+        "Meta-prompting: LLM を使って prompts を動的に作成・改善する advanced prompt engineering 手法",
+        "Meta-prompting は well-defined sections（context, instructions, constraints）を持つ prompt 構造を生成し、曖昧さを低減",
+        "Structure-oriented: 問題と解決策の format/pattern を特定コンテンツより優先",
+        "Dynamic Meta-Prompting: feedback に基づいて prompt を動的に生成・調整。lazy evaluation と dynamic inference を統合",
+        "Adaptive prompting: 静的 prompt は複雑で動的な context に適応できないが、adaptive 手法は現在の contextual data と input text の変化を通じて自己修正",
+        "Token-level vs line-level granularity: line-level granularity は syntactic structure を保持し、compression と information retention のバランスが最適",
+        "Heading 構造あり文書 vs flat text: structured content では LLM が情報を parse/理解しやすく、context preservation が向上",
+        "文書特性検知: heading structure の有無、document length、semantic density に応じて prompt を調整"
+      ],
+      "details": "Markdown や XML による構造化表現は explicit semantic cues（headings, lists）を提供し、LLM がより少ない token で直接的に情報を処理できる。結果として処理速度向上、コスト削減、contextual understanding 改善。Flat text では明確な semantic headings や logical section breaks がないと、LLM は特に長文書で overarching context を追跡できなくなる。",
+      "sources": [
+        "https://intuitionlabs.ai/articles/meta-prompting-llm-self-optimization",
+        "https://www.prompthub.us/blog/a-complete-guide-to-meta-prompting",
+        "https://arxiv.org/html/2311.11482v6",
+        "https://www.promptingguide.ai/techniques/meta-prompting",
+        "https://www.comet.com/site/blog/meta-prompting/",
+        "https://developer.webex.com/blog/boosting-ai-performance-the-power-of-llm-friendly-content-in-markdown",
+        "https://www.searchcans.com/blog/markdown-vs-html-llm-context-optimization-2026/",
+        "https://arxiv.org/html/2411.10541v1"
+      ]
+    },
+    {
+      "topic": "RAG における semantic chunking と LLM-based chunking の実用動向",
+      "key_points": [
+        "Semantic chunking: 文の embeddings を比較し、最も類似した embeddings を持つ文をグループ化",
+        "3 つの戦略: percentile（X percentile 以上の差で分割）、standard_deviation（X 標準偏差以上で分割）、interquartile（四分位範囲で分割）",
+        "LLM-based chunking: language model が文書構造を分析し、context-aware な境界決定を行う最も強力な戦略",
+        "Chroma 研究: LLM-based semantic chunking が 91.9% recall で全手法中最高。ただし computational cost は最大",
+        "Chunking strategy が RAG システム精度の約 60% を決定（embedding model や reranker より重要）",
+        "Production teams: advanced chunking strategies により同じ質問に答えるための retrieval calls が 30-40% 削減",
+        "Max-Min semantic chunking: semantic similarity と Max-Min algorithm を利用し、既存手法を統計的有意に outperform",
+        "Structure-rich documents（legal, financial, technical）向け実装: 1) 文書構造抽出 2) 最低レベルで semantic units 識別 3) min/max chunk size 設定 4) 超過時は再帰分割"
+      ],
+      "details": "LLM-based chunking は chunks を summarize したり key ideas を highlight したりできるが、最も computationally expensive で低速。high-value で複雑な文書（法的契約、研究論文、コンプライアンス文書、企業ナレッジベース）に適する。Semantic chunking は各文の embedding 計算が必要で、大規模コレクションでは高コスト。2026 年のツールエコシステムには LangChain RecursiveCharacterTextSplitter、Llama Index SimpleNodeParser などがある。",
+      "sources": [
+        "https://weaviate.io/blog/chunking-strategies-for-rag",
+        "https://medium.com/@adnanmasood/chunking-strategies-for-retrieval-augmented-generation-rag-a-comprehensive-guide-5522c4ea2a90",
+        "https://medium.com/the-ai-forum/semantic-chunking-for-rag-f4733025d5f5",
+        "https://www.pinecone.io/learn/chunking-strategies/",
+        "https://www.firecrawl.dev/blog/best-chunking-strategies-rag-2025",
+        "https://ragaboutit.com/the-chunking-strategy-shift-why-semantic-boundaries-cut-your-rag-errors-by-60/",
+        "https://link.springer.com/article/10.1007/s10791-025-09638-7"
+      ]
+    },
+    {
+      "topic": "Confidence scores と uncertainty estimation（境界の確信度推定）",
+      "key_points": [
+        "Uncertainty quantification (UQ) 手法: logit-based（token-level 確率分析）、sampling-based（複数生成の variability）、verbalized confidence（model 自身に確信度を表現させる）",
+        "Verbalized Confidence Elicitation (VCE): model に自身の confidence を述べさせる",
+        "Maximum Sequence Probability (MSP): 出力確率から confidence を導出",
+        "Sample Consistency: 複数出力の stability から uncertainty を測定",
+        "Confidence-Consistency Aggregation (CoCoA): model-internal confidence と output consistency を組み合わせ",
+        "Normalization: uncertainty scores を [0,1] に正規化（linear scaling, quantile scaling）",
+        "Confidence calibration: confidence score が model 出力の期待品質を直接反映するよう調整",
+        "Cycles of Thought: semantically likely な explanations の分布を分析して confidence を推定"
+      ],
+      "details": "LLM の uncertainty estimation は end users にとって直感的にするため、normalized confidence scores C(x) ∈ [0,1] に変換される。現在の structured output では boundary ごとの confidence を直接返す仕組みは標準化されていないが、sampling-based アプローチ（同じ prompt で複数回生成し、boundary の一致度を測定）で実装可能。",
+      "sources": [
+        "https://arxiv.org/html/2406.03441v1",
+        "https://medium.com/capgemini-invent-lab/quantifying-llms-uncertainty-with-confidence-scores-6bb8a6712aa0",
+        "https://arxiv.org/html/2510.20460v1",
+        "https://medium.com/@georgekar91/measuring-confidence-in-llm-responses-e7df525c283f",
+        "https://aclanthology.org/2023.emnlp-demo.41.pdf",
+        "https://dl.acm.org/doi/10.1145/3711896.3736569"
+      ]
+    },
+    {
+      "topic": "Context window の長さと長文書処理への影響",
+      "key_points": [
+        "Context length は LLM performance に直接影響。長い context は document summarization や long-form QA で理解・coherence を向上",
+        "U-shaped performance curve: 文書の先頭・末尾（0-20%, 80-100%）の情報は高 recall、中央部の情報は精度が 20-30% 低下",
+        "Context rot: context window が埋まる前に、input length 増加で performance が劣化。Attention が先頭と末尾に集中し、中央の情報処理が不安定",
+        "結果として hallucinations、ignored instructions、contradictory answers が発生",
+        "短い context window は segmentation を強制し、coherence 劣化と engineering overhead 増加",
+        "Context window segmentation and sliding: input sequences を小セグメントに操作、または context window を移動して長 sequences を処理可能に",
+        "2026 年の landscape: 128K-token models から 10M-token systems まで。多くのビジネス用途では 128K-200K tokens で十分",
+        "大きい context window は processing time と cost を増加させる"
+      ],
+      "details": "Semantic chunking は documents を sentences に分割 → 各 sentence の embeddings 計算 → 連続 segments 間の similarity 測定 → 高 similarity content をマージする方式で、meaning による grouping を実現。Line-level granularity は token-level より syntactic structure を保持し、compression constraints 下でも性能劣化が少ない。",
+      "sources": [
+        "https://unstructured.io/insights/choosing-the-right-llm-a-guide-to-context-window-sizes",
+        "https://www.qodo.ai/blog/context-windows/",
+        "https://research.trychroma.com/context-rot",
+        "https://arxiv.org/html/2402.02244v3",
+        "https://www.elvex.com/blog/context-length-comparison-ai-models-2026",
+        "https://redis.io/blog/context-window-overflow/"
+      ]
+    },
+    {
+      "topic": "Temperature, Top-K, Top-P パラメータと structured output への影響",
+      "key_points": [
+        "Temperature (0.0-2.0, default 1.0): 低温（0.2）で deterministic/focused、高温（0.9）で creative/diverse",
+        "Top-P: token 選択を確率合計が top-P 値になるまで累積。低 top-p（0.1）で focused、高 top-p（0.9）で diverse",
+        "Top-K: 選択候補を上位 K tokens に限定。top-K=1 は greedy decoding、top-K=3 は上位 3 tokens から temperature sampling",
+        "Parameter interaction: 各 token 選択ステップで top-K で候補を絞り → top-P でフィルタ → temperature sampling で最終選択",
+        "Structured output 用には低 temperature（0.0-0.3）が推奨。より一貫した schema 準拠結果",
+        "Temperature=0 でも完全決定論性は保証されない（「mostly deterministic」だが small variation は可能）",
+        "Seed 固定は「best effort」で同じ response を提供。model や parameter 変更で seed が同じでも variation 発生",
+        "responseMimeType と responseSchema パラメータは sampling parameters（temperature, top-K, top-P）と独立動作"
+      ],
+      "details": "Gemini では temperature, top-p, top-k を組み合わせて model behavior を fine-tune できる。例: 低 temperature + 低 top-p で focused/deterministic、高 temperature + 高 top-p で creative/diverse。Structured JSON 生成では低 temperature が schema adherence を向上させるが、決定論性には限界がある。",
+      "sources": [
+        "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/prompts/adjust-parameter-values",
+        "https://firebase.google.com/docs/ai-logic/model-parameters",
+        "https://www.carneiro.dev/blog/ai/llm-sampling-parameters",
+        "https://medium.com/google-cloud/beyond-temperature-tuning-llm-output-with-top-k-and-top-p-24c2de5c3b16",
+        "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/content-generation-parameters"
+      ]
+    },
+    {
+      "topic": "プロンプトエンジニアリングの production-grade ベストプラクティス（2026 年）",
+      "key_points": [
+        "Specificity and Structure: 非常に具体的な instructions、タスクと結果の形式を明確化、関連詳細を含める",
+        "Advanced techniques: zero-shot, few-shot, chain-of-thought, meta-prompting, self-consistency, role prompting",
+        "Context engineering: user intent, conversation history, training data structure を考慮。RAG、summarization、structured inputs（JSON）を活用",
+        "Iteration and testing: 実環境での reliability 維持に regular testing が不可欠",
+        "Version control: 変更追跡と一貫性維持に重要",
+        "CI/CD integration: production 環境での steady, scalable performance をサポート",
+        "Prompt format impact: instructions/context/examples を分離することで曖昧さ削減",
+        "明確な delimiters（headings, tags, sections）で model が constraints と content を混同しないようにする",
+        "ほぼ全主要 LLM docs（OpenAI, Anthropic, Google, Meta）が 2026 年時点で同じ underlying architecture を指摘"
+      ],
+      "details": "Production-grade prompt engineering は dynamic, iterative process で、clarity, specificity, contextual relevance を組み合わせる。Vendor guides は一貫して consistent structure と clear delimiters の使用を推奨。Prompt engineering の真の expertise は、AI models が動作する broader context（user intent から training data structure まで）を理解することにある。",
+      "sources": [
+        "https://www.palantir.com/docs/foundry/aip/best-practices-prompt-engineering",
+        "https://www.lakera.ai/blog/prompt-engineering-guide",
+        "https://www.ibm.com/think/prompt-engineering",
+        "https://latitude-blog.ghost.io/blog/10-best-practices-for-production-grade-llm-prompt-engineering/",
+        "https://www.analyticsvidhya.com/blog/2026/01/master-prompt-engineering/",
+        "https://www.neuralbuddies.com/p/marking-up-the-prompt-how-markdown-formatting-influences-llm-responses"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "url": "https://arxiv.org/html/2601.03276",
+      "title": "Topic Segmentation Using Generative Language Models",
+      "type": "research-paper",
+      "relevance": "high",
+      "summary": "LLM を使った topic segmentation の overlapping recursive prompting 戦略を提案。文境界番号付け、few-shot 例示、再帰的分割の実装詳細"
+    },
+    {
+      "url": "https://ai.google.dev/gemini-api/docs/structured-output",
+      "title": "Structured outputs | Gemini API | Google AI for Developers",
+      "type": "official-docs",
+      "relevance": "high",
+      "summary": "Gemini API の ResponseSchema を使った structured output の公式ドキュメント。schema design、description フィールド、propertyOrdering のベストプラクティス"
+    },
+    {
+      "url": "https://developers.googleblog.com/en/mastering-controlled-generation-with-gemini-15-schema-adherence/",
+      "title": "Mastering Controlled Generation with Gemini 1.5: Schema Adherence for Developers",
+      "type": "official-docs",
+      "relevance": "high",
+      "summary": "Gemini 1.5 の schema adherence に関する開発者向け詳細ガイド。controlled generation のベストプラクティス"
+    },
+    {
+      "url": "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/prompts/system-instructions",
+      "title": "Use system instructions | Generative AI on Vertex AI",
+      "type": "official-docs",
+      "relevance": "high",
+      "summary": "Gemini API の system instruction 使用ガイド。system instruction vs user prompt の使い分け、役割定義、コンテキスト情報の配置"
+    },
+    {
+      "url": "https://ai.google.dev/gemini-api/docs/prompting-strategies",
+      "title": "Prompt design strategies | Gemini API | Google AI for Developers",
+      "type": "official-docs",
+      "relevance": "high",
+      "summary": "Gemini API の prompt design 戦略公式ガイド。構造化、明確な指示、コンテキスト提供の推奨パターン"
+    },
+    {
+      "url": "https://arxiv.org/html/2510.20151",
+      "title": "BoundRL: Efficient Structured Text Segmentation through Reinforced Boundary Generation",
+      "type": "research-paper",
+      "relevance": "high",
+      "summary": "境界生成問題として structured text segmentation を再定式化。開始トークンのみ生成することで推論コスト削減と hallucination 低減"
+    },
+    {
+      "url": "https://arxiv.org/html/2601.12061v2",
+      "title": "Codebook-Injected Dialogue Segmentation for Multi-Utterance Constructs Annotation",
+      "type": "research-paper",
+      "relevance": "medium",
+      "summary": "Codebook（定義集）を prompt に注入して discourse function 変化で境界を置く手法。LLM-assisted dialogue segmentation"
+    },
+    {
+      "url": "https://weaviate.io/blog/chunking-strategies-for-rag",
+      "title": "Chunking Strategies to Improve Your RAG Performance | Weaviate",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "RAG の chunking strategies 包括ガイド。semantic chunking の 3 戦略（percentile, standard_deviation, interquartile）"
+    },
+    {
+      "url": "https://medium.com/@adnanmasood/chunking-strategies-for-retrieval-augmented-generation-rag-a-comprehensive-guide-5522c4ea2a90",
+      "title": "Chunking Strategies for Retrieval-Augmented Generation (RAG): A Comprehensive Guide",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "RAG の chunking strategies 詳細ガイド。LLM-based chunking の実装とトレードオフ"
+    },
+    {
+      "url": "https://medium.com/the-ai-forum/semantic-chunking-for-rag-f4733025d5f5",
+      "title": "Semantic Chunking for RAG",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "Semantic chunking の仕組み（文の embeddings 比較 → 類似度によるグループ化）と実装方法"
+    },
+    {
+      "url": "https://link.springer.com/article/10.1007/s10791-025-09638-7",
+      "title": "Max–Min semantic chunking of documents for RAG application",
+      "type": "research-paper",
+      "relevance": "medium",
+      "summary": "Max-Min algorithm を使った semantic chunking。既存手法を統計的有意に outperform"
+    },
+    {
+      "url": "https://www.promptingguide.ai/techniques/fewshot",
+      "title": "Few-Shot Prompting | Prompt Engineering Guide",
+      "type": "tutorial",
+      "relevance": "high",
+      "summary": "Few-shot prompting の基本と実装。demonstrations による in-context learning のガイド"
+    },
+    {
+      "url": "https://www.promptingguide.ai/techniques/cot",
+      "title": "Chain-of-Thought Prompting | Prompt Engineering Guide",
+      "type": "tutorial",
+      "relevance": "high",
+      "summary": "Chain-of-Thought prompting の詳細ガイド。step-by-step reasoning、zero-shot CoT、few-shot CoT"
+    },
+    {
+      "url": "https://www.datacamp.com/tutorial/chain-of-thought-prompting",
+      "title": "Chain-of-Thought Prompting: Step-by-Step Reasoning with LLMs | DataCamp",
+      "type": "tutorial",
+      "relevance": "high",
+      "summary": "CoT prompting の実践的チュートリアル。タスク分解と intermediate steps による推論改善"
+    },
+    {
+      "url": "https://www.ibm.com/think/topics/chain-of-thoughts",
+      "title": "What is chain of thought (CoT) prompting? | IBM",
+      "type": "tutorial",
+      "relevance": "medium",
+      "summary": "IBM による CoT prompting の解説。複雑タスクでの multi-step reasoning の重要性"
+    },
+    {
+      "url": "https://intuitionlabs.ai/articles/meta-prompting-llm-self-optimization",
+      "title": "Meta-Prompting: LLMs Crafting & Enhancing Their Own Prompts | IntuitionLabs",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "Meta-prompting の詳細解説。LLM を使った prompt の動的生成・改善、well-defined sections、structure-oriented approach"
+    },
+    {
+      "url": "https://www.prompthub.us/blog/a-complete-guide-to-meta-prompting",
+      "title": "A Complete Guide to Meta Prompting",
+      "type": "tutorial",
+      "relevance": "high",
+      "summary": "Meta prompting の包括ガイド。prompt を guide/structure/optimize する手法"
+    },
+    {
+      "url": "https://arxiv.org/html/2311.11482v6",
+      "title": "Meta Prompting for AI Systems",
+      "type": "research-paper",
+      "relevance": "medium",
+      "summary": "AI systems における meta prompting の研究。dynamic inference と lazy evaluation の統合"
+    },
+    {
+      "url": "https://govisible.ai/blog/semantic-markers-how-llms-parse-structured-content/",
+      "title": "Semantic Markers: How LLMs Parse Structured Content",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "LLM が構造化コンテンツをどう parse するか。headings, entity labels, positional cues などの semantic markers の役割"
+    },
+    {
+      "url": "https://medium.com/@TechforHumans/effective-prompt-engineering-mastering-xml-tags-for-clarity-precision-and-security-in-llms-992cae203fdc",
+      "title": "Effective Prompt Engineering: Mastering XML Tags for Clarity, Precision, and Security in LLMs",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "XML タグを使った prompt engineering。boundary markers としての役割と contamination 防止"
+    },
+    {
+      "url": "https://developer.webex.com/blog/boosting-ai-performance-the-power-of-llm-friendly-content-in-markdown",
+      "title": "Boosting AI Performance: The Power of LLM-Friendly Content in Markdown",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "Markdown による LLM-friendly content 作成。explicit semantic cues による処理効率向上"
+    },
+    {
+      "url": "https://www.searchcans.com/blog/markdown-vs-html-llm-context-optimization-2026/",
+      "title": "Markdown vs. HTML for LLM Context: Optimizing Performance & Cost",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "Markdown vs HTML の LLM context 最適化比較。token 効率と contextual understanding"
+    },
+    {
+      "url": "https://arxiv.org/html/2411.10541v1",
+      "title": "Does Prompt Formatting Have Any Impact on LLM Performance?",
+      "type": "research-paper",
+      "relevance": "medium",
+      "summary": "Prompt formatting が LLM performance に与える影響の研究。構造化と delimiter の重要性"
+    },
+    {
+      "url": "https://research.trychroma.com/context-rot",
+      "title": "Context Rot: How Increasing Input Tokens Impacts LLM Performance | Chroma Research",
+      "type": "research-paper",
+      "relevance": "high",
+      "summary": "Context rot の研究。input length 増加による performance 劣化、U-shaped performance curve、attention の先頭・末尾集中"
+    },
+    {
+      "url": "https://unstructured.io/insights/choosing-the-right-llm-a-guide-to-context-window-sizes",
+      "title": "Choosing the Right LLM: A Guide to Context Window Sizes | Unstructured",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "Context window sizes の選び方ガイド。長 context の利点と processing time/cost のトレードオフ"
+    },
+    {
+      "url": "https://www.qodo.ai/blog/context-windows/",
+      "title": "Understanding Context Window for AI Performance & Use",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "Context window が AI performance に与える影響の解説。長文書処理における coherence 向上"
+    },
+    {
+      "url": "https://arxiv.org/html/2402.02244v3",
+      "title": "Beyond the Limits: A Survey of Techniques to Extend the Context Length in Large Language Models",
+      "type": "research-paper",
+      "relevance": "low",
+      "summary": "LLM の context length 拡張技術のサーベイ。context window segmentation and sliding"
+    },
+    {
+      "url": "https://www.elvex.com/blog/context-length-comparison-ai-models-2026",
+      "title": "Context Length Comparison: Leading AI Models in 2026",
+      "type": "blog-post",
+      "relevance": "low",
+      "summary": "2026 年の主要 AI models の context length 比較。128K-10M tokens の landscape"
+    },
+    {
+      "url": "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/prompts/adjust-parameter-values",
+      "title": "Experiment with parameter values | Generative AI on Vertex AI",
+      "type": "official-docs",
+      "relevance": "high",
+      "summary": "Gemini model parameters（temperature, top-K, top-P）の調整ガイド。parameter interaction と structured output への影響"
+    },
+    {
+      "url": "https://firebase.google.com/docs/ai-logic/model-parameters",
+      "title": "Use model configuration to control responses | Firebase AI Logic",
+      "type": "official-docs",
+      "relevance": "high",
+      "summary": "Firebase AI Logic の model configuration ガイド。temperature, top-P, top-K の詳細と決定論性の限界"
+    },
+    {
+      "url": "https://www.carneiro.dev/blog/ai/llm-sampling-parameters",
+      "title": "Understanding Temperature, Top-p, and Top-k in LLMs",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "LLM sampling parameters の詳細解説。temperature, top-p, top-k の仕組みと組み合わせ方"
+    },
+    {
+      "url": "https://medium.com/google-cloud/beyond-temperature-tuning-llm-output-with-top-k-and-top-p-24c2de5c3b16",
+      "title": "Beyond temperature: Tuning LLM output with top-k and top-p",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "Temperature 以外の tuning 手法。top-K, top-P による output control"
+    },
+    {
+      "url": "https://arxiv.org/html/2406.03441v1",
+      "title": "Cycles of Thought: Measuring LLM Confidence through Stable Explanations",
+      "type": "research-paper",
+      "relevance": "medium",
+      "summary": "Semantically likely な explanations の分布を分析して LLM confidence を推定する手法"
+    },
+    {
+      "url": "https://medium.com/capgemini-invent-lab/quantifying-llms-uncertainty-with-confidence-scores-6bb8a6712aa0",
+      "title": "Quantifying LLMs Uncertainty with Confidence Scores",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "LLM の uncertainty を confidence scores で quantify する手法。VCE, MSP, Sample Consistency, CoCoA"
+    },
+    {
+      "url": "https://arxiv.org/html/2510.20460v1",
+      "title": "Systematic Evaluation of Uncertainty Estimation Methods in Large Language Models",
+      "type": "research-paper",
+      "relevance": "medium",
+      "summary": "LLM の uncertainty estimation methods の体系的評価。logit-based, sampling-based, verbalized confidence"
+    },
+    {
+      "url": "https://medium.com/@georgekar91/measuring-confidence-in-llm-responses-e7df525c283f",
+      "title": "Measuring Confidence in LLM responses",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "LLM responses の confidence 測定手法。normalization と calibration"
+    },
+    {
+      "url": "https://aclanthology.org/2023.emnlp-demo.41.pdf",
+      "title": "LM-Polygraph: Uncertainty Estimation for Language Models",
+      "type": "research-paper",
+      "relevance": "low",
+      "summary": "Language models の uncertainty estimation フレームワーク LM-Polygraph"
+    },
+    {
+      "url": "https://dl.acm.org/doi/10.1145/3711896.3736569",
+      "title": "Uncertainty Quantification and Confidence Calibration in Large Language Models: A Survey",
+      "type": "research-paper",
+      "relevance": "low",
+      "summary": "LLM の uncertainty quantification と confidence calibration のサーベイ"
+    },
+    {
+      "url": "https://www.palantir.com/docs/foundry/aip/best-practices-prompt-engineering",
+      "title": "Best practices for LLM prompt engineering • Palantir",
+      "type": "official-docs",
+      "relevance": "medium",
+      "summary": "Palantir の prompt engineering ベストプラクティス。specificity, structure, context engineering"
+    },
+    {
+      "url": "https://www.lakera.ai/blog/prompt-engineering-guide",
+      "title": "The Ultimate Guide to Prompt Engineering in 2026 | Lakera",
+      "type": "tutorial",
+      "relevance": "medium",
+      "summary": "2026 年の prompt engineering ガイド。advanced techniques と production-grade practices"
+    },
+    {
+      "url": "https://www.ibm.com/think/prompt-engineering",
+      "title": "The 2026 Guide to Prompt Engineering | IBM",
+      "type": "tutorial",
+      "relevance": "medium",
+      "summary": "IBM の 2026 prompt engineering ガイド。clarity, specificity, contextual relevance"
+    },
+    {
+      "url": "https://latitude-blog.ghost.io/blog/10-best-practices-for-production-grade-llm-prompt-engineering/",
+      "title": "10 Best Practices for Production-Grade LLM Prompt Engineering",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "Production-grade prompt engineering の 10 ベストプラクティス。iteration, testing, version control, CI/CD"
+    },
+    {
+      "url": "https://www.analyticsvidhya.com/blog/2026/01/master-prompt-engineering/",
+      "title": "Prompt Engineering Guide 2026",
+      "type": "tutorial",
+      "relevance": "low",
+      "summary": "2026 年の prompt engineering マスターガイド。基本から advanced techniques まで"
+    },
+    {
+      "url": "https://www.neuralbuddies.com/p/marking-up-the-prompt-how-markdown-formatting-influences-llm-responses",
+      "title": "Marking Up the Prompt: How Markdown Formatting Influences LLM Responses",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "Markdown formatting が LLM responses に与える影響の研究。delimiters と structure の重要性"
+    },
+    {
+      "url": "https://winder.ai/llm-prompt-best-practices-large-context-windows/",
+      "title": "LLM Prompt Best Practices for Large Context Windows",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "Large context windows での prompt best practices。segmentation, summarization, relevance filtering"
+    },
+    {
+      "url": "https://towardsdatascience.com/boost-your-llm-outputdesign-smarter-prompts-real-tricks-from-an-ai-engineers-toolbox/",
+      "title": "Design Smarter Prompts and Boost Your LLM Output: Real Tricks from an AI Engineer's Toolbox",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "AI エンジニアの toolbox から実践的 prompt design tricks。task decomposition, context engineering"
+    },
+    {
+      "url": "https://ragaboutit.com/the-chunking-strategy-shift-why-semantic-boundaries-cut-your-rag-errors-by-60/",
+      "title": "The Chunking Strategy Shift: Why Semantic Boundaries Cut Your RAG Errors by 60%",
+      "type": "blog-post",
+      "relevance": "high",
+      "summary": "Semantic boundaries が RAG errors を 60% 削減する理由。chunking strategy が精度の約 60% を決定"
+    },
+    {
+      "url": "https://www.firecrawl.dev/blog/best-chunking-strategies-rag-2025",
+      "title": "Best Chunking Strategies for RAG in 2025",
+      "type": "blog-post",
+      "relevance": "medium",
+      "summary": "2025-2026 年の RAG 向け best chunking strategies。LLM-based vs semantic vs fixed-size"
+    },
+    {
+      "url": "https://www.pinecone.io/learn/chunking-strategies/",
+      "title": "Chunking Strategies for LLM Applications | Pinecone",
+      "type": "tutorial",
+      "relevance": "medium",
+      "summary": "Pinecone による chunking strategies ガイド。RAG applications での実装パターン"
+    }
+  ],
+  "related_topics": [
+    "Prompt optimization with reinforcement learning（RLHF, RLVR）",
+    "Multi-agent prompting for complex segmentation tasks",
+    "Hierarchical segmentation（section → paragraph → sentence levels）",
+    "Cross-lingual text segmentation with multilingual LLMs",
+    "Evaluation metrics for LLM-based segmentation（Pk, WindowDiff, boundary PRF）",
+    "Cost-performance tradeoffs in LLM segmentation vs embedding-based methods",
+    "Fine-tuning vs prompting for domain-specific segmentation",
+    "Hybrid approaches combining LLM and traditional features（heading depth, paragraph length）",
+    "Real-time streaming segmentation with LLMs",
+    "Privacy-preserving segmentation with local/on-premise LLMs"
+  ],
+  "confidence": "high",
+  "gaps": [
+    "Gemini API の structured output で boundary ごとの confidence score を直接返す標準的な実装方法（現時点では sampling-based approach で代替可能）",
+    "見出し構造の有無を自動検知する具体的なヒューリスティクスまたは LLM プロンプト（heading count, depth distribution などの threshold）",
+    "フラット文書 vs 見出し付き文書で最適な粒度ガイダンスの定量的な違い（「fewer, larger」の具体的な数値目安）",
+    "2-pass アプローチ（1: 文書構造分析 → 2: 境界検出）の Gemini API での具体的実装例と性能比較",
+    "長文書（200+ blocks）での context window overflow を回避する overlapping recursive prompting の最適 overlap サイズとチャンクサイズ",
+    "Few-shot 例の選定基準（文書タイプ、長さ、見出し構造の有無で異なる例を使うべきか）",
+    "CoT prompting を text segmentation に適用した際の reasoning steps の具体例（「Let's think step by step」以外の domain-specific 指示）",
+    "Meta-prompting で文書特性から prompt を動的生成する際の「特性抽出 → prompt 調整」パイプラインの実装",
+    "Gemini 2.5 Flash Lite など軽量 model での structured output 精度と速度のトレードオフ",
+    "同一文書に対する複数回の boundary detection で consistency を測定し、低 consistency 箇所を再処理する iterative refinement の実装"
+  ]
+}

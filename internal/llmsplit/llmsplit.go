@@ -54,10 +54,7 @@ func (s *Splitter) DetectBoundaries(ctx context.Context, blocks []model.Block) (
 	}
 
 	prompt := buildPrompt(blocks, s.similarities)
-	sysPrompt := systemPrompt
-	if len(s.similarities) > 0 {
-		sysPrompt = systemPromptRefine
-	}
+	sysPrompt := selectSystemPrompt(blocks, s.similarities)
 	resp, err := s.client.Models.GenerateContent(ctx, s.config.model(), []*genai.Content{
 		genai.NewContentFromText(prompt, "user"),
 	}, generateConfig(s.config.Temperature, sysPrompt))
@@ -117,16 +114,59 @@ func boundarySchema() *genai.Schema {
 	}
 }
 
-const systemPrompt = `You split a Markdown document into semantically coherent segments.
+// hasHeadings returns true if any block is a heading.
+func hasHeadings(blocks []model.Block) bool {
+	for _, b := range blocks {
+		if b.Kind == model.BlockHeading {
+			return true
+		}
+	}
+	return false
+}
+
+// selectSystemPrompt picks the system prompt based on document structure and mode.
+func selectSystemPrompt(blocks []model.Block, similarities []float64) string {
+	headed := hasHeadings(blocks)
+	refine := len(similarities) > 0
+	switch {
+	case headed && refine:
+		return sysPromptHeadedRefine
+	case headed:
+		return sysPromptHeaded
+	case refine:
+		return sysPromptFlatRefine
+	default:
+		return sysPromptFlat
+	}
+}
+
+const guidelinesFlat = `
+Guidelines:
+- Only place boundaries at major topic shifts — where the document transitions from one subject, feature, or entity to a fundamentally different one.
+- Do NOT place boundaries between sub-sections of the same topic. For example, multiple endpoints of the same API resource, validation rules for the same entity, or detailed specifications within a feature all belong in one segment.
+- When a block introduces a new subject — such as a new feature, entity, or subsystem, possibly with a background or motivation paragraph — place the boundary just before that introductory block so it stays with the new topic.
+- Prefer fewer, larger segments over many small ones. A 200-block document typically needs only 5–15 boundaries, not 50+.`
+
+const guidelinesHeaded = `
+Guidelines:
+- Headings are strong boundary signals. Place a boundary before a heading that introduces a new section or topic.
+- Do NOT place boundaries between sub-sections of the same topic. For example, multiple endpoints under the same heading, or detailed specifications within a section, all belong in one segment.
+- When a block introduces a new subject — such as a new feature, entity, or subsystem, possibly with a background or motivation paragraph — place the boundary just before that introductory block so it stays with the new topic.`
+
+const basePrompt = `You split a Markdown document into semantically coherent segments.
 
 The document is given as a numbered list of blocks. Gap index i is the position between block[i] and block[i+1]. Return gap indices where the topic changes.`
 
-const systemPromptRefine = `You split a Markdown document into semantically coherent segments.
-
-The document is given as a numbered list of blocks. Gap index i is the position between block[i] and block[i+1].
+const refineExtra = `
 Each gap has a cosine similarity score (0.0–1.0) between adjacent block embeddings. Lower similarity suggests a topic change.
-Use both the text content and the similarity scores to decide where to place boundaries.
-Return gap indices where the topic changes.`
+Use both the text content and the similarity scores to decide where to place boundaries.`
+
+var (
+	sysPromptFlat          = basePrompt + guidelinesFlat
+	sysPromptHeaded        = basePrompt + guidelinesHeaded
+	sysPromptFlatRefine    = basePrompt + refineExtra + guidelinesFlat
+	sysPromptHeadedRefine  = basePrompt + refineExtra + guidelinesHeaded
+)
 
 // buildPrompt constructs the user prompt from blocks.
 // If similarities is non-empty, each gap's cosine similarity is included.
