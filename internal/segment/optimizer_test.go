@@ -510,6 +510,95 @@ func TestAdjustHeadingBoundaries(t *testing.T) {
 	}
 }
 
+func TestAdjustFlatBoundaries(t *testing.T) {
+	pb := func(text string) model.Block {
+		return model.Block{Kind: model.BlockParagraph, Text: text}
+	}
+
+	tests := []struct {
+		name       string
+		blocks     []model.Block
+		boundaries []int
+		want       []int
+	}{
+		{
+			name: "snap intro block to next section",
+			blocks: []model.Block{
+				// Section A: tasks
+				pb("task create update delete validate"),
+				pb("task endpoint POST GET PUT"),
+				pb("task validation rules format"),
+				// Intro block: references both topics but belongs with B
+				pb("feature label management organize tasks by label"),
+				// Section B: labels
+				pb("label data definition id name color"),
+				pb("label endpoint POST GET DELETE"),
+				pb("label validation unique name"),
+			},
+			// LLM places boundary at gap 3 (intro in section A)
+			// Gold: gap 2 (intro starts section B)
+			boundaries: []int{3},
+			want:       []int{2},
+		},
+		{
+			name: "already correct position",
+			blocks: []model.Block{
+				pb("alpha beta gamma"),
+				pb("alpha delta epsilon"),
+				pb("zeta eta theta"),
+				pb("zeta iota kappa"),
+			},
+			boundaries: []int{1},
+			want:       []int{1},
+		},
+		{
+			name: "with headings is no-op",
+			blocks: []model.Block{
+				{Kind: model.BlockHeading, Text: "Title"},
+				pb("content about tasks"),
+				pb("content about labels"),
+			},
+			boundaries: []int{1},
+			want:       []int{1},
+		},
+		{
+			name: "empty boundaries",
+			blocks: []model.Block{pb("aaa"), pb("bbb")},
+			boundaries: nil,
+			want:       nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			br := boundary.BoundaryResult{
+				Boundaries:  tt.boundaries,
+				DepthScores: make([]float64, max(len(tt.blocks)-1, 0)),
+			}
+			segs := segment.Optimize(tt.blocks, br, segment.OptConfig{})
+
+			var got []int
+			offset := 0
+			for i, seg := range segs {
+				if i < len(segs)-1 {
+					got = append(got, offset+len(seg.Blocks)-1)
+				}
+				offset += len(seg.Blocks)
+			}
+
+			if len(got) != len(tt.want) {
+				t.Fatalf("got boundaries %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("got boundaries %v, want %v", got, tt.want)
+					break
+				}
+			}
+		})
+	}
+}
+
 func TestAutoMaxLines(t *testing.T) {
 	tests := []struct {
 		name       string

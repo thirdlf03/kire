@@ -2,6 +2,8 @@ package segment
 
 import (
 	"slices"
+	"strings"
+	"unicode"
 
 	"github.com/thirdlf03/kire/internal/boundary"
 	"github.com/thirdlf03/kire/internal/model"
@@ -34,8 +36,9 @@ func Optimize(blocks []model.Block, br boundary.BoundaryResult, config OptConfig
 		return nil
 	}
 
-	// Adjust boundaries: shift boundary after heading to before heading
+	// Adjust boundaries: snap to heading runs, then snap flat-doc boundaries
 	boundaries := AdjustHeadingBoundaries(blocks, br.Boundaries)
+	boundaries = adjustFlatBoundaries(blocks, boundaries)
 
 	// Initial split at boundaries
 	segments := splitAtBoundaries(blocks, boundaries)
@@ -90,6 +93,134 @@ func AdjustHeadingBoundaries(blocks []model.Block, boundaries []int) []int {
 
 	// Deduplicate and sort
 	return dedupSorted(adjusted)
+}
+
+const flatSnapWindow = 3
+
+// adjustFlatBoundaries snaps boundaries in flat documents (no headings) using
+// IDF-weighted block-fit analysis. For each boundary at gap b, it checks whether
+// block[b] fits better with the preceding or following blocks. If it fits better
+// with the following blocks, the boundary snaps to b-1 so that block[b] starts
+// the next segment instead of ending the current one.
+func adjustFlatBoundaries(blocks []model.Block, boundaries []int) []int {
+	if len(boundaries) == 0 || hasHeadings(blocks) {
+		return boundaries
+	}
+
+	sets := make([]map[string]struct{}, len(blocks))
+	for i := range blocks {
+		sets[i] = tokenSet(blocks[i].Text)
+	}
+	df := docFrequency(sets)
+	n := len(blocks)
+
+	adjusted := slices.Clone(boundaries)
+	for i, b := range adjusted {
+		if b <= 0 || b >= n {
+			continue
+		}
+		prevSet := mergeTokenSets(sets, max(0, b-flatSnapWindow), b)
+		nextSet := mergeTokenSets(sets, b+1, min(n, b+1+flatSnapWindow))
+		fitPrev := idfSimilarity(sets[b], prevSet, df)
+		fitNext := idfSimilarity(sets[b], nextSet, df)
+		if fitNext > fitPrev {
+			adjusted[i] = b - 1
+		}
+	}
+	return dedupSorted(adjusted)
+}
+
+// hasHeadings reports whether any block is a heading.
+func hasHeadings(blocks []model.Block) bool {
+	for _, b := range blocks {
+		if b.Kind == model.BlockHeading {
+			return true
+		}
+	}
+	return false
+}
+
+// tokenSet extracts a set of tokens from text. ASCII words are extracted
+// normally; CJK characters (Han, Katakana, Hiragana) are treated as
+// individual tokens since each character carries semantic meaning.
+func tokenSet(text string) map[string]struct{} {
+	set := make(map[string]struct{})
+	lower := strings.ToLower(text)
+	var word strings.Builder
+	for _, r := range lower {
+		if unicode.Is(unicode.Han, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Hiragana, r) {
+			if word.Len() > 0 {
+				set[word.String()] = struct{}{}
+				word.Reset()
+			}
+			set[string(r)] = struct{}{}
+		} else if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			word.WriteRune(r)
+		} else {
+			if word.Len() > 0 {
+				set[word.String()] = struct{}{}
+				word.Reset()
+			}
+		}
+	}
+	if word.Len() > 0 {
+		set[word.String()] = struct{}{}
+	}
+	return set
+}
+
+// mergeTokenSets unions the token sets of blocks[from:to].
+func mergeTokenSets(sets []map[string]struct{}, from, to int) map[string]struct{} {
+	merged := make(map[string]struct{})
+	for i := from; i < to; i++ {
+		for w := range sets[i] {
+			merged[w] = struct{}{}
+		}
+	}
+	return merged
+}
+
+// docFrequency counts how many blocks each token appears in.
+func docFrequency(sets []map[string]struct{}) map[string]int {
+	df := make(map[string]int)
+	for _, s := range sets {
+		for w := range s {
+			df[w]++
+		}
+	}
+	return df
+}
+
+// idfSimilarity computes IDF-weighted Jaccard: sum(IDF for intersection) / sum(IDF for union).
+// IDF is defined as 1/df(token), giving higher weight to rare tokens.
+func idfSimilarity(a, b map[string]struct{}, df map[string]int) float64 {
+	if len(a) == 0 && len(b) == 0 {
+		return 1.0
+	}
+	var interIDF, unionIDF float64
+	all := make(map[string]struct{}, len(a)+len(b))
+	for w := range a {
+		all[w] = struct{}{}
+	}
+	for w := range b {
+		all[w] = struct{}{}
+	}
+	for w := range all {
+		idf := 1.0
+		if c := df[w]; c > 0 {
+			idf = 1.0 / float64(c)
+		}
+		unionIDF += idf
+		_, inA := a[w]
+		_, inB := b[w]
+		if inA && inB {
+			interIDF += idf
+		}
+	}
+	if unionIDF == 0 {
+		return 1.0
+	}
+	return interIDF / unionIDF
 }
 
 func dedupSorted(sorted []int) []int {

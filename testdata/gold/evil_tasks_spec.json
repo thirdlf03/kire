@@ -3,8 +3,8 @@
   "unit": "block",
   "boundaries": [41, 63, 91, 109, 131, 146, 183],
   "params": {
-    "eval_stage": "raw",
-    "tolerance": 1
+    "eval_stage": "final",
+    "tolerance": 0
   },
   "notes": {
     "description": "198 blocks: flat Markdown spec with no headings. Boundaries are at 'additional feature' introductions.",
